@@ -117,8 +117,8 @@ func SyncFromOmniRoute(cfgPath string) (*SyncResult, error) {
 
 	res := &SyncResult{Details: []string{}}
 
-	// 1. Sync Provider Connections
-	rows, err := db.Query("SELECT id, provider, auth_type, priority, is_active, refresh_token, access_token, api_key, provider_specific_data FROM provider_connections WHERE is_active = 1")
+	// 1. Sync Provider Connections (import all configured accounts, tracking active status)
+	rows, err := db.Query("SELECT id, provider, auth_type, priority, is_active, refresh_token, access_token, api_key, provider_specific_data FROM provider_connections")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query provider_connections: %w", err)
 	}
@@ -158,6 +158,7 @@ func SyncFromOmniRoute(cfgPath string) (*SyncResult, error) {
 				RefreshToken: refresh,
 				AccessToken:  access,
 				AccountID:    projID,
+				Disabled:     isActive == 0,
 				Weight:       1,
 			})
 			res.AccountsImported++
@@ -178,10 +179,25 @@ func SyncFromOmniRoute(cfgPath string) (*SyncResult, error) {
 				RefreshToken: refresh,
 				AccessToken:  access,
 				ProfileARN:   profileARN,
+				Disabled:     isActive == 0,
 				Weight:       1,
 			})
 			res.AccountsImported++
-			res.Details = append(res.Details, fmt.Sprintf("Imported Kiro account %s", accID))
+			statusStr := ""
+			if isActive == 0 {
+				statusStr = " [standby/disabled]"
+			}
+			res.Details = append(res.Details, fmt.Sprintf("Imported Kiro account %s%s", accID, statusStr))
+
+		case "tokenrouter":
+			addOrUpdateProvider(cfg, config.ProviderConfig{
+				ID:      "tokenrouter",
+				Type:    "openai",
+				BaseURL: "https://api.tokenrouter.com/v1",
+				APIKey:  apiKey,
+			})
+			res.ProvidersImported++
+			res.Details = append(res.Details, "Imported TokenRouter provider (https://api.tokenrouter.com/v1)")
 
 		case "agentrouter":
 			addOrUpdateProvider(cfg, config.ProviderConfig{

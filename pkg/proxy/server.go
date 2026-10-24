@@ -1918,10 +1918,11 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	allEntries := catalog.Search("")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
-		"count":  len(catalog.Registry),
-		"data":   catalog.Registry,
+		"count":  len(allEntries),
+		"data":   allEntries,
 	})
 }
 
