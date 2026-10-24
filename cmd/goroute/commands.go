@@ -765,7 +765,24 @@ func NewStatusCmd() *cobra.Command {
 			}
 			defer resp.Body.Close()
 
+			var healthData struct {
+				Status         string                 `json:"status"`
+				Engine         string                 `json:"engine"`
+				RustSIMD       bool                   `json:"rust_simd"`
+				MemoryAlloc    string                 `json:"memory_alloc"`
+				ProvidersCount int                    `json:"providers_count"`
+				CombosCount    int                    `json:"combos_count"`
+				Providers      map[string]interface{} `json:"providers"`
+			}
+			_ = json.NewDecoder(resp.Body).Decode(&healthData)
+
 			fmt.Println("✅ GoRoute is ACTIVE on http://127.0.0.1:8128")
+			fmt.Printf("   Engine:          %s\n", healthData.Engine)
+			fmt.Printf("   Memory RSS:      %s\n", healthData.MemoryAlloc)
+			fmt.Printf("   Rust SIMD:       %v\n", healthData.RustSIMD)
+			fmt.Printf("   Active Providers: %d\n", healthData.ProvidersCount)
+			fmt.Printf("   Ready Combos:     %d\n", healthData.CombosCount)
+
 			modelsResp, err := http.Get("http://127.0.0.1:8128/v1/models")
 			if err == nil {
 				defer modelsResp.Body.Close()
@@ -773,9 +790,9 @@ func NewStatusCmd() *cobra.Command {
 					Data []providers.ModelInfo `json:"data"`
 				}
 				if json.NewDecoder(modelsResp.Body).Decode(&data) == nil {
-					fmt.Printf("   Active Models/Combos: %d\n", len(data.Data))
+					fmt.Printf("   Available Models/Combos: %d\n", len(data.Data))
 					for _, m := range data.Data {
-						fmt.Printf("   • %s (%s)\n", m.ID, m.OwnedBy)
+						fmt.Printf("   • %-26s [%s]\n", m.ID, m.OwnedBy)
 					}
 				}
 			}

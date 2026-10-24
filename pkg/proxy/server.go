@@ -1481,9 +1481,33 @@ func (s *Server) handleDeleteCapabilityOverride(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	memAllocMB := fmt.Sprintf("%.2f MB", float64(m.Alloc)/(1024*1024))
+
+	provList := s.router.GetAllProviders()
+	provMap := make(map[string]interface{}, len(provList))
+	for _, p := range provList {
+		provMap[p.ID()] = map[string]interface{}{
+			"type":    p.Type(),
+			"healthy": p.IsHealthy(),
+		}
+	}
+
+	combos := s.router.GetCombos()
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok","engine":"goroute"}`))
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":          "ok",
+		"engine":          "GoRoute (Go Core + Rust SIMD Accelerator)",
+		"rust_simd":       fast.IsAvailable(),
+		"memory_alloc":    memAllocMB,
+		"providers_count": len(provList),
+		"providers":       provMap,
+		"combos_count":    len(combos),
+		"timestamp":       time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
