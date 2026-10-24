@@ -45,6 +45,7 @@ import (
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/rtk"
 	"github.com/ziuus/goroute/pkg/storage"
+	"github.com/ziuus/goroute/pkg/webhooks"
 	"github.com/ziuus/goroute/pkg/store"
 	"github.com/ziuus/goroute/pkg/sync"
 	"github.com/ziuus/goroute/pkg/tokens"
@@ -286,6 +287,7 @@ func (s *Server) setupRoutes() {
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
+	s.mux.Get("/metrics", s.handleMetrics)
 	s.mux.Post("/message", s.mcpServer.HandleMessage)
 	s.mux.Get("/mcp/tools", s.mcpServer.HandleToolsList)
 	s.mux.Post("/mcp/tools", s.mcpServer.HandleToolCall)
@@ -1605,6 +1607,26 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	body, isStream, statusCode, err := s.router.Execute(ctx, &chatReq)
 	if err != nil {
+		// Attempt dynamic fallback cascade if chain is configured
+		if chain := storage.ResolveFallbackChain(chatReq.Model); len(chain) > 0 {
+			log.Printf("[GoRoute] Triggering fallback cascade for %s: %v", chatReq.Model, chain)
+			for _, fbModel := range chain {
+				reqCopy := chatReq
+				reqCopy.Model = fbModel
+				if fbBody, fbStream, fbCode, fbErr := s.router.Execute(ctx, &reqCopy); fbErr == nil && fbCode < 400 {
+					log.Printf("[GoRoute] Fallback cascade succeeded: %s -> %s", chatReq.Model, fbModel)
+					body = fbBody
+					isStream = fbStream
+					statusCode = fbCode
+					err = nil
+					chatReq.Model = fbModel
+					break
+				}
+			}
+		}
+	}
+	if err != nil {
+		webhooks.DispatchEvent("request.error", map[string]interface{}{"model": chatReq.Model, "error": err.Error(), "status": statusCode})
 		log.Printf("[GoRoute] Execute error: %v (code %d)", err, statusCode)
 		if statusCode < 100 || statusCode > 599 {
 			statusCode = http.StatusInternalServerError
