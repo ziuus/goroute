@@ -230,8 +230,16 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		ID      string `json:"id"`
 		Choices []struct {
 			Message struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
+				Role      string `json:"role"`
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
 			} `json:"message"`
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
@@ -262,13 +270,26 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	cleanedText, xmlTools := ExtractXmlToolCalls(replyText)
 	var contentBlocks []interface{}
-	if cleanedText != "" || len(xmlTools) == 0 {
-		contentBlocks = append(contentBlocks, map[string]interface{}{
-			"type": "text",
-			"text": cleanedText,
-		})
-	}
 	stopReason := "end_turn"
+
+	// Native structured tool calls from OpenAI response
+	if len(openAIResp.Choices) > 0 && len(openAIResp.Choices[0].Message.ToolCalls) > 0 {
+		stopReason = "tool_use"
+		for _, tc := range openAIResp.Choices[0].Message.ToolCalls {
+			var inputObj map[string]interface{}
+			_ = json.Unmarshal([]byte(tc.Function.Arguments), &inputObj)
+			if inputObj == nil {
+				inputObj = map[string]interface{}{}
+			}
+			contentBlocks = append(contentBlocks, map[string]interface{}{
+				"type":  "tool_use",
+				"id":    tc.ID,
+				"name":  tc.Function.Name,
+				"input": inputObj,
+			})
+		}
+	}
+
 	if len(xmlTools) > 0 {
 		stopReason = "tool_use"
 		for _, tc := range xmlTools {
@@ -279,6 +300,15 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 				"input": tc.Input,
 			})
 		}
+	}
+
+	if cleanedText != "" || len(contentBlocks) == 0 {
+		contentBlocks = append([]interface{}{
+			map[string]interface{}{
+				"type": "text",
+				"text": cleanedText,
+			},
+		}, contentBlocks...)
 	}
 
 	anthropicResp := map[string]interface{}{
