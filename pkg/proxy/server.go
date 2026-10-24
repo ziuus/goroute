@@ -1129,17 +1129,65 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleConductorFleet(w http.ResponseWriter, r *http.Request) {
-	// Active coding agent fleet status
-	fleet := []storage.FleetAgent{
-		{ID: "node-1", Name: "Local Worker", CLI: "opencode", Status: "idle", LastSeen: time.Now().UTC()},
-		{ID: "node-2", Name: "Claude Runner", CLI: "claude", Status: "idle", LastSeen: time.Now().UTC()},
+func scanActiveFleetAgents() []storage.FleetAgent {
+	fleet := make([]storage.FleetAgent, 0)
+	targets := []string{"hermes", "claude", "opencode", "codex", "aider", "goose", "openclaw", "crush"}
+
+	out, err := exec.Command("pgrep", "-a", "-f", "hermes|claude|opencode|codex|aider|goose|openclaw|crush").Output()
+	if err != nil {
+		return fleet
 	}
+
+	lines := strings.Split(string(out), "\n")
+	myPid := os.Getpid()
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " ", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		var pid int
+		fmt.Sscanf(parts[0], "%d", &pid)
+		if pid == myPid || pid == 0 {
+			continue
+		}
+		cmdline := parts[1]
+		if strings.Contains(cmdline, "pgrep") || strings.Contains(cmdline, "grep") {
+			continue
+		}
+		for _, target := range targets {
+			if strings.Contains(strings.ToLower(cmdline), target) {
+				name := strings.ToUpper(target[:1]) + target[1:] + " Worker"
+				if target == "hermes" {
+					name = "Hermes Gateway"
+				} else if target == "claude" {
+					name = "Claude Runner"
+				}
+				fleet = append(fleet, storage.FleetAgent{
+					ID:       fmt.Sprintf("pid-%d", pid),
+					Name:     name,
+					CLI:      target,
+					Status:   "active",
+					LastSeen: time.Now().UTC(),
+				})
+				break
+			}
+		}
+	}
+	return fleet
+}
+
+func (s *Server) handleConductorFleet(w http.ResponseWriter, r *http.Request) {
+	// Dynamically scan active agent processes on host
+	fleet := scanActiveFleetAgents()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"offline": false,
+		"offline": len(fleet) == 0,
 		"fleet":   fleet,
 		"total":   len(fleet),
 	})
@@ -3794,6 +3842,9 @@ func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
 	caches := make(map[string]interface{})
 
 	buildQuotaData := func(pID, accID, displayName string, disabled bool, cooling bool) (QuotaDetails, map[string]QuotaItem, int64) {
+		isOAuth := pID == "antigravity" || pID == "kiro" || pID == "codex" || pID == "copilot" || pID == "cursor"
+		unlimited := !isOAuth
+
 		sessionTotal := 100
 		weeklyTotal := 1000
 		if pID == "antigravity" {
@@ -3828,25 +3879,41 @@ func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
 		weeklyPct := math.Round((float64(weeklyRemaining) / float64(weeklyTotal)) * 100)
 
 		now := time.Now()
-		var resetSessionTime time.Time
-		if !u5.OldestCall.IsZero() {
-			resetSessionTime = u5.OldestCall.Add(5 * time.Hour)
+		var sessionResetStr string
+		var sessionCountdown string
+		if unlimited {
+			sessionCountdown = "Unlimited (pay-as-you-go)"
+			sessionPct = 100
+			sessionRemaining = 999999
+		} else if u5.Requests > 0 && !u5.OldestCall.IsZero() {
+			resetSessionTime := u5.OldestCall.Add(5 * time.Hour)
+			if resetSessionTime.After(now) {
+				sessionResetStr = resetSessionTime.UTC().Format(time.RFC3339)
+				sessionCountdown = formatResetCountdown(resetSessionTime)
+			} else {
+				sessionCountdown = "Ready (idle)"
+			}
+		} else {
+			sessionCountdown = "Ready (idle)"
 		}
-		if resetSessionTime.IsZero() || resetSessionTime.Before(now) {
-			resetSessionTime = now.Add(4*time.Hour + 20*time.Minute)
-		}
-		sessionResetStr := resetSessionTime.UTC().Format(time.RFC3339)
-		sessionCountdown := formatResetCountdown(resetSessionTime)
 
-		var resetWeeklyTime time.Time
-		if !u7.OldestCall.IsZero() {
-			resetWeeklyTime = u7.OldestCall.Add(7 * 24 * time.Hour)
+		var weeklyResetStr string
+		var weeklyCountdown string
+		if unlimited {
+			weeklyCountdown = "Unlimited (pay-as-you-go)"
+			weeklyPct = 100
+			weeklyRemaining = 999999
+		} else if u7.Requests > 0 && !u7.OldestCall.IsZero() {
+			resetWeeklyTime := u7.OldestCall.Add(7 * 24 * time.Hour)
+			if resetWeeklyTime.After(now) {
+				weeklyResetStr = resetWeeklyTime.UTC().Format(time.RFC3339)
+				weeklyCountdown = formatResetCountdown(resetWeeklyTime)
+			} else {
+				weeklyCountdown = "Ready (idle)"
+			}
+		} else {
+			weeklyCountdown = "Ready (idle)"
 		}
-		if resetWeeklyTime.IsZero() || resetWeeklyTime.Before(now) {
-			resetWeeklyTime = now.Add(5*24*time.Hour + 12*time.Hour)
-		}
-		weeklyResetStr := resetWeeklyTime.UTC().Format(time.RFC3339)
-		weeklyCountdown := formatResetCountdown(resetWeeklyTime)
 
 		windows := map[string]QuotaItem{
 			"session": {
@@ -3858,6 +3925,7 @@ func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
 				RemainingPercentage: sessionPct,
 				ResetAt:             sessionResetStr,
 				ResetCountdown:      sessionCountdown,
+				Unlimited:           unlimited,
 			},
 			"weekly": {
 				Name:                "weekly",
@@ -3868,6 +3936,7 @@ func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
 				RemainingPercentage: weeklyPct,
 				ResetAt:             weeklyResetStr,
 				ResetCountdown:      weeklyCountdown,
+				Unlimited:           unlimited,
 			},
 		}
 
@@ -3907,17 +3976,8 @@ func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
 		}
 
 		latMs := u5.AvgLatencyMs
-		if latMs <= 0 {
-			switch pID {
-			case "antigravity":
-				latMs = 280
-			case "kiro":
-				latMs = 1040
-			case "codex":
-				latMs = 620
-			default:
-				latMs = 450
-			}
+		if latMs < 0 {
+			latMs = 0
 		}
 
 		allQuotas := map[string]QuotaItem{
@@ -3928,14 +3988,19 @@ func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
 			allQuotas[k] = v
 		}
 
+		var pResetAt *string
+		if sessionResetStr != "" {
+			pResetAt = &sessionResetStr
+		}
+
 		details := QuotaDetails{
 			Used:             sessionUsed,
 			Total:            sessionTotal,
 			Remaining:        sessionRemaining,
 			PercentRemaining: sessionPct,
-			ResetAt:          &sessionResetStr,
+			ResetAt:          pResetAt,
 			ResetCountdown:   sessionCountdown,
-			Unlimited:        pID == "openai" || pID == "deepseek",
+			Unlimited:        unlimited,
 			Windows:          windows,
 			ModelCaps:        modelCaps,
 		}

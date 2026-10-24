@@ -2762,7 +2762,7 @@
         } else {
           provGrid.innerHTML = filteredProvs.map(p => {
             const emoji = getProviderEmoji(p.id);
-            const accCount = p.details?.accounts || (p.id === 'antigravity' ? 4 : (p.id === 'kiro' ? 2 : 1));
+            const accCount = p.details?.accounts || (p.accounts ? p.accounts.length : 1);
             const provType = p.details?.type || p.id;
             const metaUrl = (typeof PROVIDER_META !== 'undefined' && PROVIDER_META[p.id]) ? PROVIDER_META[p.id].url : '';
             const ep = metaUrl ? metaUrl.replace(/^https?:\/\//, '') : (p.details?.endpoint || p.id + ' endpoint');
@@ -2882,12 +2882,15 @@
 
         let svgHtml = `<svg class="topology-svg" viewBox="0 0 ${w} ${h}">`;
 
+        const gatewayNode = res.nodes.find(n => n.type === 'gateway');
+        const ramStr = gatewayNode?.details?.memory || '3.7 MB';
+
         // Center Gateway
         svgHtml += `
           <g class="topo-node" transform="translate(${cx}, ${cy})">
             <circle r="36" fill="#18181b" stroke="#3b82f6" stroke-width="2.5"/>
             <text text-anchor="middle" dy="-5" fill="#fff" font-size="11" font-weight="700">GoRoute</text>
-            <text text-anchor="middle" dy="12" fill="#34d399" font-size="9" font-family="Geist Mono">1.5 MB RAM</text>
+            <text text-anchor="middle" dy="12" fill="#34d399" font-size="9" font-family="Geist Mono">${ramStr} RAM</text>
           </g>
         `;
 
@@ -3949,31 +3952,17 @@
         let models = res.models || [];
         
         if (models.length === 0) {
-          if (currentProviderId === 'apinexbond') {
-            models = [
-              { id: 'gemini-3.1-pro' },
-              { id: 'free/gemini-3.1-pro' },
-              { id: 'deepseek-v4-pro' },
-              { id: 'free/deepseek-v4-pro' },
-              { id: 'gemini-3.8-flash' },
-              { id: 'free/gemini-3.8-flash' },
-              { id: 'claude-sonnet-5.5' },
-              { id: 'claude-opus-5.5' }
-            ];
-          } else if (currentProviderId === 'antigravity') {
-            models = [
-              { id: 'gemini-3.8-flash-high' },
-              { id: 'gemini-3.1-pro-high' },
-              { id: 'claude-sonnet-4-6' },
-              { id: 'claude-opus-4-6-thinking' }
-            ];
-          } else if (currentProviderId === 'kiro') {
-            models = [
-              { id: 'claude-sonnet-4.5' },
-              { id: 'claude-haiku-4.5' }
-            ];
-          } else {
-            models = [{ id: 'default' }];
+          // Check SQLite radar catalog for verified cached models for this provider
+          try {
+            const catRes = await fetch('/api/radar/catalog').then(r => r.json());
+            if (catRes.entries && catRes.entries.length > 0) {
+              const matched = catRes.entries.filter(e => e.provider === currentProviderId);
+              if (matched.length > 0) {
+                models = matched.map(m => ({ id: m.model || m.id }));
+              }
+            }
+          } catch (e) {
+            console.warn('Radar catalog lookup fallback error:', e);
           }
         }
 
@@ -5134,8 +5123,10 @@
         let accounts = [];
         (allOverviewProviders || []).forEach(op => {
           const qp = provMap[op.id] || {};
-          const sess = qp.quota?.windows?.session || { used: 0, total: 100, remainingPercentage: 100, resetCountdown: '4h 19m' };
-          const week = qp.quota?.windows?.weekly || { used: 0, total: 1000, remainingPercentage: 100, resetCountdown: '5d 11h' };
+          const isUnlimited = qp.quota?.unlimited || false;
+          const defaultCountdown = isUnlimited ? 'Unlimited' : 'Ready (idle)';
+          const sess = qp.quota?.windows?.session || { used: 0, total: 100, remainingPercentage: 100, resetCountdown: defaultCountdown };
+          const week = qp.quota?.windows?.weekly || { used: 0, total: 1000, remainingPercentage: 100, resetCountdown: defaultCountdown };
           if (op.accounts && op.accounts.length > 0) {
             op.accounts.forEach(acc => {
               accounts.push({
@@ -5145,7 +5136,7 @@
                 used_5h: sess.used || 0,
                 limit_5h: sess.total || 100,
                 remaining_percent: sess.remainingPercentage ?? 100,
-                reset_countdown: sess.resetCountdown || '4h 19m',
+                reset_countdown: sess.resetCountdown || defaultCountdown,
                 used_7d: week.used || 0,
                 limit_7d: week.total || 1000,
                 status: acc.status || 'Active'
@@ -5159,7 +5150,7 @@
               used_5h: sess.used || 0,
               limit_5h: sess.total || 100,
               remaining_percent: sess.remainingPercentage ?? 100,
-              reset_countdown: sess.resetCountdown || '4h 19m',
+              reset_countdown: sess.resetCountdown || defaultCountdown,
               used_7d: week.used || 0,
               limit_7d: week.total || 1000,
               status: op.status || 'Active'
@@ -5179,14 +5170,18 @@
         const cardContainer = document.getElementById('quota-view-provider-cards');
         if (cardContainer && providers.length > 0) {
           cardContainer.innerHTML = providers.map(p => {
-            const sess = p.quota?.windows?.session || { used: 0, total: 100, remainingPercentage: 100, resetCountdown: '4h 19m' };
-            const week = p.quota?.windows?.weekly || { used: 0, total: 1000, remainingPercentage: 100, resetCountdown: '5d 11h' };
+            const isUnlimited = p.quota?.unlimited || false;
+            const defaultCountdown = isUnlimited ? 'Unlimited' : 'Ready (idle)';
+            const sess = p.quota?.windows?.session || { used: 0, total: 100, remainingPercentage: 100, resetCountdown: defaultCountdown };
+            const week = p.quota?.windows?.weekly || { used: 0, total: 1000, remainingPercentage: 100, resetCountdown: defaultCountdown };
             const remPct = Math.round(sess.remainingPercentage ?? 100);
             const weekRemPct = Math.round(week.remainingPercentage ?? 100);
             const hColor = remPct < 20 ? '#f87171' : (remPct < 50 ? '#facc15' : '#4ade80');
             const dColor = weekRemPct < 20 ? '#f87171' : (weekRemPct < 50 ? '#facc15' : '#38bdf8');
             const opMatch = allOverviewProviders.find(op => op.id === p.provider);
             const icon = opMatch ? opMatch.icon : (typeof getProviderIcon === 'function' ? getProviderIcon(p.provider) : '⚡');
+            const sessCd = sess.resetCountdown ? sess.resetCountdown : defaultCountdown;
+            const weekCd = week.resetCountdown ? week.resetCountdown : defaultCountdown;
 
             return `
               <div class="card" style="padding: 1rem; border: 1px solid var(--border); background: var(--bg-hover);">
@@ -5195,15 +5190,15 @@
                     <span style="font-size: 1.25rem;">${icon}</span>
                     <div>
                       <span style="font-weight: 600; font-size: 0.95rem;">${p.name || p.provider}</span>
-                      <div style="font-size: 0.72rem; color: var(--text-dim);">${p.provider} · ${p.speed?.latencyMs || 45}ms</div>
+                      <div style="font-size: 0.72rem; color: var(--text-dim);">${p.provider} · ${p.speed?.latencyMs || 0}ms</div>
                     </div>
                   </div>
-                  <span class="badge ${remPct < 5 ? 'badge-danger' : 'badge-success'}">${remPct < 5 ? 'Exhausted' : 'Active'}</span>
+                  <span class="badge ${remPct < 5 ? 'badge-danger' : 'badge-success'}">${isUnlimited ? 'Pay-as-you-go' : (remPct < 5 ? 'Exhausted' : 'Active')}</span>
                 </div>
                 <div style="margin-bottom: 0.75rem;">
                   <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.25rem;">
                     <span>5h Rolling Window</span>
-                    <span><strong style="color: ${hColor};">${remPct}% left</strong> (⏱ ${sess.resetCountdown || '4h 19m'})</span>
+                    <span><strong style="color: ${hColor};">${remPct}% left</strong> (⏱ ${sessCd})</span>
                   </div>
                   <div class="quota-bar-bg" style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
                     <div style="width: ${remPct}%; height: 100%; background: ${hColor}; transition: width 0.3s;"></div>
@@ -5212,7 +5207,7 @@
                 <div>
                   <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.25rem;">
                     <span>7d Weekly Limit</span>
-                    <span><strong style="color: ${dColor};">${weekRemPct}% left</strong> (⏱ ${week.resetCountdown || '5d 11h'})</span>
+                    <span><strong style="color: ${dColor};">${weekRemPct}% left</strong> (⏱ ${weekCd})</span>
                   </div>
                   <div class="quota-bar-bg" style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
                     <div style="width: ${weekRemPct}%; height: 100%; background: ${dColor}; transition: width 0.3s;"></div>
@@ -5225,30 +5220,31 @@
 
         renderQuotaAccountTable();
 
-        // Render Model Tier Chips
+        // Render Live Model Tier Chips from Radar Catalog
         const modelsContainer = document.getElementById('quota-models-container');
         if (modelsContainer) {
-          const sampleModels = [
-            { name: 'claude-3-7-sonnet', provider: 'kiro', remaining: 88, rpm: '50 req/m', tpm: '200k/m' },
-            { name: 'claude-3-5-sonnet', provider: 'kiro', remaining: 92, rpm: '50 req/m', tpm: '200k/m' },
-            { name: 'claude-haiku-4.5', provider: 'kiro', remaining: 96, rpm: '100 req/m', tpm: '400k/m' },
-            { name: 'gemini-2.5-pro', provider: 'antigravity', remaining: 85, rpm: '60 req/m', tpm: '1M/m' },
-            { name: 'gemini-3.8-flash-high', provider: 'antigravity', remaining: 95, rpm: '120 req/m', tpm: '2M/m' },
-            { name: 'gpt-4o', provider: 'openai', remaining: 78, rpm: '500 req/m', tpm: '500k/m' },
-            { name: 'deepseek-reasoner', provider: 'deepseek', remaining: 84, rpm: '100 req/m', tpm: '500k/m' }
-          ];
-          modelsContainer.innerHTML = sampleModels.map(m => `
-            <div style="background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; font-size: 0.8rem; flex: 1; min-width: 200px;">
-              <div style="display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.25rem;">
-                <span style="font-family: 'Geist Mono';">${m.name}</span>
-                <span style="color: #4ade80;">${m.remaining}% cap</span>
-              </div>
-              <div style="font-size: 0.72rem; color: var(--text-dim); display: flex; justify-content: space-between;">
-                <span>${m.provider}</span>
-                <span>${m.rpm} · ${m.tpm}</span>
-              </div>
-            </div>
-          `).join('');
+          try {
+            const catRes = await fetch('/api/radar/catalog').then(r => r.json());
+            const realEntries = (catRes.entries || []).slice(0, 8);
+            if (realEntries.length > 0) {
+              modelsContainer.innerHTML = realEntries.map(m => `
+                <div style="background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; font-size: 0.8rem; flex: 1; min-width: 200px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.25rem;">
+                    <span style="font-family: 'Geist Mono';">${m.model || m.id}</span>
+                    <span style="color: #4ade80;">${Math.round((m.successRate || 1) * 100)}% live</span>
+                  </div>
+                  <div style="font-size: 0.72rem; color: var(--text-dim); display: flex; justify-content: space-between;">
+                    <span>${m.provider}</span>
+                    <span>p50: ${m.latencyP50 || 0}ms · p99: ${m.latencyP99 || 0}ms</span>
+                  </div>
+                </div>
+              `).join('');
+            } else {
+              modelsContainer.innerHTML = `<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem;">No cached catalog models.</div>`;
+            }
+          } catch (e) {
+            modelsContainer.innerHTML = `<div style="color: var(--text-dim); font-size: 0.8rem; padding: 0.5rem;">Unable to load catalog models.</div>`;
+          }
         }
       } catch (e) {
         console.error('loadFullQuotaView error:', e);
@@ -5305,7 +5301,7 @@
                 <div style="width: ${remPct}%; height: 100%; background: ${remColor};"></div>
               </div>
             </td>
-            <td style="font-size: 0.75rem; color: var(--text-dim);">⏱ ${a.reset_countdown || '4h 19m'}</td>
+            <td style="font-size: 0.75rem; color: var(--text-dim);">${a.reset_countdown && a.reset_countdown !== 'Ready (idle)' ? '⏱ ' + a.reset_countdown : 'Ready (idle)'}</td>
             <td><span class="badge ${remPct < 20 ? 'badge-warning' : 'badge-success'}">${remPct < 5 ? 'Near Limit' : 'Active'}</span></td>
             <td style="text-align: right;">
               <button class="btn btn-outline btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;" onclick="testAccountDirect('${a.provider_id}', '${a.account_id}')">⚡ Test</button>
