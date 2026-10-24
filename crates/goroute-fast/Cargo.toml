@@ -11,6 +11,8 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [dependencies]
 regex = { version = "1.10", features = ["std", "perf", "unicode-case"] }
 libc = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [profile.release]
 opt-level = 3

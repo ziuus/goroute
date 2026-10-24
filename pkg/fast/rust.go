@@ -1,9 +1,10 @@
 package fast
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -15,10 +16,12 @@ var (
 	rustAvailable bool
 	rustVersion   string
 
-	fnVersion     func() uintptr
-	fnCompress    func(input uintptr, level int32) uintptr
-	fnCountTokens func(input uintptr) int32
-	fnFreeString  func(ptr uintptr)
+	fnVersion      func() uintptr
+	fnCompress     func(input uintptr, level int32) uintptr
+	fnCountTokens  func(input uintptr) int32
+	fnFreeString   func(ptr uintptr)
+	fnResolveModel func(modelPtr uintptr, providersPtr uintptr) uintptr
+	fnSanitizePII  func(inputPtr uintptr) uintptr
 )
 
 func findRustLib() string {
@@ -66,6 +69,8 @@ func initRust() {
 	purego.RegisterLibFunc(&fnCompress, lib, "goroute_rust_compress")
 	purego.RegisterLibFunc(&fnCountTokens, lib, "goroute_rust_count_tokens")
 	purego.RegisterLibFunc(&fnFreeString, lib, "goroute_rust_free_string")
+	purego.RegisterLibFunc(&fnResolveModel, lib, "goroute_rust_resolve_model")
+	purego.RegisterLibFunc(&fnSanitizePII, lib, "goroute_rust_sanitize_pii")
 
 	if fnVersion != nil {
 		vPtr := fnVersion()
@@ -106,6 +111,59 @@ func Version() string {
 	return rustVersion
 }
 
+type ModelTarget struct {
+	ProviderID  string `json:"provider_id"`
+	TargetModel string `json:"target_model"`
+}
+
+type ModelResolution struct {
+	Resolved    bool          `json:"resolved"`
+	ProviderID  string        `json:"provider_id"`
+	TargetModel string        `json:"target_model"`
+	Family      string        `json:"family"`
+	Fallbacks   []ModelTarget `json:"fallbacks"`
+}
+
+func ResolveModel(model string, activeProviders []string) (*ModelResolution, bool) {
+	once.Do(initRust)
+	if !rustAvailable || fnResolveModel == nil || fnFreeString == nil {
+		return nil, false
+	}
+
+	provCsv := strings.Join(activeProviders, ",")
+	_, mPtr := cString(model)
+	_, pPtr := cString(provCsv)
+
+	outPtr := fnResolveModel(mPtr, pPtr)
+	if outPtr == 0 {
+		return nil, false
+	}
+	defer fnFreeString(outPtr)
+
+	jsonStr := goString(outPtr)
+	var res ModelResolution
+	if err := json.Unmarshal([]byte(jsonStr), &res); err != nil {
+		return nil, false
+	}
+	return &res, res.Resolved
+}
+
+func SanitizePII(input string) string {
+	once.Do(initRust)
+	if !rustAvailable || fnSanitizePII == nil || fnFreeString == nil {
+		return input
+	}
+
+	_, inPtr := cString(input)
+	outPtr := fnSanitizePII(inPtr)
+	if outPtr == 0 {
+		return input
+	}
+	defer fnFreeString(outPtr)
+
+	return goString(outPtr)
+}
+
 func Compress(input string, level int32) (string, bool) {
 	once.Do(initRust)
 	if !rustAvailable || fnCompress == nil || fnFreeString == nil {
@@ -138,6 +196,12 @@ func Status() map[string]interface{} {
 	return map[string]interface{}{
 		"rust_available": rustAvailable,
 		"rust_version":   Version(),
-		"engine":         fmt.Sprintf("Hybrid Architecture (Go Core + Rust SIMD Engine)"),
+		"engine":         "Hybrid Architecture (Go Core + Rust SIMD Engine)",
+		"capabilities": []string{
+			"SIMD Caveman Context Compression",
+			"Zero-Alloc Model & Family Resolution",
+			"SIMD PII & Token Redaction",
+			"Sub-Microsecond BPE Token Counting",
+		},
 	}
 }

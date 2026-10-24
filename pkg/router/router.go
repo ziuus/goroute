@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/fast"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/resilience"
 	"github.com/ziuus/goroute/pkg/translator"
@@ -205,6 +206,15 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 		return Target{ProviderID: parts[0], Model: parts[1]}, true
 	}
 
+	var activeProvs []string
+	for pid := range r.providers {
+		activeProvs = append(activeProvs, pid)
+	}
+
+	if res, ok := fast.ResolveModel(model, activeProvs); ok && res != nil {
+		return Target{ProviderID: res.ProviderID, Model: res.TargetModel}, true
+	}
+
 	return Target{}, false
 }
 
@@ -365,52 +375,62 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 	combo, isCombo := r.combos[normReq.Model]
 	r.mu.RUnlock()
 
-	// Alias resolution to combos if exact match not found
+	// 2. High-speed Rust Model & Family Resolver if not exact combo match
 	if !isCombo && !strings.Contains(normReq.Model, "/") {
-		lower := strings.ToLower(normReq.Model)
 		r.mu.RLock()
-		for name, c := range r.combos {
-			cLower := strings.ToLower(name)
-			if strings.Contains(lower, "opus") && strings.Contains(cLower, "opus") {
-				combo = c
-				isCombo = true
-				break
-			}
-			if strings.Contains(lower, "haiku") && strings.Contains(cLower, "haiku") {
-				combo = c
-				isCombo = true
-				break
-			}
-			if (strings.Contains(lower, "sonnet") || strings.Contains(lower, "claude")) && (strings.Contains(cLower, "sonnet") || strings.Contains(cLower, "claude")) {
-				combo = c
-				isCombo = true
-				break
-			}
-			if strings.Contains(lower, "gemini") && strings.Contains(cLower, "gemini") {
-				combo = c
-				isCombo = true
-				break
-			}
-		}
-
-		if !isCombo {
-			if c, ok := r.combos["claude-sonnet-4.5"]; ok && len(c.Targets) > 0 {
-				combo = c
-				isCombo = true
-			} else if c, ok := r.combos["sonnet"]; ok && len(c.Targets) > 0 {
-				combo = c
-				isCombo = true
-			} else {
-				for _, c := range r.combos {
-					if len(c.Targets) > 0 {
-						combo = c
-						isCombo = true
-						break
-					}
-				}
-			}
+		var activeProvs []string
+		for pid := range r.providers {
+			activeProvs = append(activeProvs, pid)
 		}
 		r.mu.RUnlock()
+
+		if res, ok := fast.ResolveModel(normReq.Model, activeProvs); ok && res != nil && res.ProviderID != "" {
+			var targets []Target
+			targets = append(targets, Target{
+				ProviderID: res.ProviderID,
+				Model:      res.TargetModel,
+			})
+			for _, fb := range res.Fallbacks {
+				targets = append(targets, Target{
+					ProviderID: fb.ProviderID,
+					Model:      fb.TargetModel,
+				})
+			}
+			combo = &Combo{
+				Name:     normReq.Model,
+				Strategy: "failover",
+				Targets:  targets,
+			}
+			isCombo = true
+		} else {
+			// Substring heuristic alias lookup across combos
+			lower := strings.ToLower(normReq.Model)
+			r.mu.RLock()
+			for name, c := range r.combos {
+				cLower := strings.ToLower(name)
+				if strings.Contains(lower, "opus") && strings.Contains(cLower, "opus") {
+					combo = c
+					isCombo = true
+					break
+				}
+				if strings.Contains(lower, "haiku") && strings.Contains(cLower, "haiku") {
+					combo = c
+					isCombo = true
+					break
+				}
+				if (strings.Contains(lower, "sonnet") || strings.Contains(lower, "claude")) && (strings.Contains(cLower, "sonnet") || strings.Contains(cLower, "claude")) {
+					combo = c
+					isCombo = true
+					break
+				}
+				if strings.Contains(lower, "gemini") && strings.Contains(cLower, "gemini") {
+					combo = c
+					isCombo = true
+					break
+				}
+			}
+			r.mu.RUnlock()
+		}
 	}
 
 	if isCombo && len(combo.Targets) > 0 {
