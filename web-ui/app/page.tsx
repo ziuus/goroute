@@ -397,233 +397,262 @@ export default function GoRouteDashboard() {
   }, [catalog, searchQuery, catalogFilterProvider]);
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark bg-[#090A0F] text-[#F4F4F5]' : 'bg-[#F8F6F1] text-[#18181B]'}`}>
+    <div className={`min-h-screen ${darkMode ? 'dark bg-[#0F1013] text-[#F4F4F6]' : 'bg-[#F4F3ED] text-[#141518]'}`}>
       
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-2xl bg-neutral-900/90 px-4 py-3 text-xs font-medium text-white shadow-2xl backdrop-blur-md transition-all dark:bg-white/95 dark:text-neutral-900">
-          <Radio className="h-4 w-4 animate-spin text-blue-500" />
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-xl border border-[#E2E0D5] bg-white px-4 py-3 text-xs font-medium text-[#141518] shadow-lg dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white">
+          <span className="h-2 w-2 rounded-full bg-[#C93D2A] animate-ping" />
           <span>{toastMsg}</span>
         </div>
       )}
 
       {/* Top Header Navigation */}
-      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/70 px-6 py-3.5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-[#090A0F]/70">
+      <header className="sticky top-0 z-40 border-b border-[#E2E0D5] bg-[#F4F3ED]/90 px-6 py-3.5 backdrop-blur-md dark:border-[#272933] dark:bg-[#0F1013]/90">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 text-base font-bold text-white shadow-lg shadow-blue-500/25">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C93D2A] text-xs font-bold text-white shadow-xs">
               ⚡
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold tracking-tight text-neutral-900 dark:text-white">GoRoute</span>
-                <span className="rounded-full bg-blue-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                  v0.3.0 SIMD
-                </span>
-                <span className="hidden items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400 sm:flex">
-                  <span className="pulse-indicator" /> Headless Daemon
-                </span>
-              </div>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                Universal LLM Gateway • Go Engine + Rust C-ABI SIMD Acceleration
-              </p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm font-bold tracking-tight text-[#141518] dark:text-white uppercase">GoRoute</span>
+              <span className="font-mono text-[11px] text-[#66655E] dark:text-[#9597A1]">v0.3.0</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Live Telemetry Pill */}
-            <div className="hidden items-center gap-3 rounded-full border border-black/[0.06] bg-black/[0.02] px-3.5 py-1.5 font-mono text-xs text-neutral-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-neutral-300 md:flex">
+          <div className="flex items-center gap-4">
+            {/* Minimal Live Status */}
+            <div className="hidden items-center gap-2.5 font-mono text-[11px] text-[#66655E] dark:text-[#9597A1] md:flex">
               <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">:8128</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-[#15803D]" />
+                <span className="text-[#141518] dark:text-[#F4F4F6] font-medium">:8128</span>
               </span>
-              <span className="h-3 w-px bg-neutral-300 dark:bg-neutral-700" />
-              <span>RAM: <strong>{gatewayMem}</strong></span>
-              <span className="h-3 w-px bg-neutral-300 dark:bg-neutral-700" />
-              <span>Routing: <strong className="text-emerald-600 dark:text-emerald-400">0.86ms</strong></span>
+              <span>•</span>
+              <span><strong>0.86ms</strong> routing</span>
+              <span>•</span>
+              <span><strong>{gatewayMem}</strong> RSS</span>
             </div>
 
-            {/* Dark/Light Switch */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-black/[0.06] bg-white/80 p-2 text-neutral-600 shadow-sm transition hover:bg-neutral-100 dark:border-white/[0.08] dark:bg-neutral-800/80 dark:text-neutral-300 dark:hover:bg-neutral-700"
-              title="Toggle Appearance"
-            >
-              {darkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E0D5] bg-white text-[#66655E] transition hover:bg-[#ECEAE2] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-[#9597A1] dark:hover:bg-[#23252E]"
+                title="Toggle Theme"
+              >
+                {darkMode ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5" />}
+              </button>
 
-            {/* Refresh Button */}
-            <button
-              onClick={fetchAllData}
-              disabled={loading}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-black/[0.06] bg-white/80 p-2 text-neutral-600 shadow-sm transition hover:bg-neutral-100 dark:border-white/[0.08] dark:bg-neutral-800/80 dark:text-neutral-300"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-blue-500' : ''}`} />
-            </button>
+              <button
+                onClick={fetchAllData}
+                disabled={loading}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E0D5] bg-white text-[#66655E] transition hover:bg-[#ECEAE2] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-[#9597A1] dark:hover:bg-[#23252E]"
+                title="Refresh State"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-[#C93D2A]' : ''}`} />
+              </button>
 
-            {/* Add Provider Modal Trigger */}
-            <button
-              onClick={() => {
-                setSelectedTemplate(PROVIDER_TEMPLATES[0]);
-                setAddProvId('anthropic');
-                setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
-                setShowAddModal(true);
-              }}
-              className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Connect Provider</span>
-            </button>
+              <button
+                onClick={() => {
+                  setSelectedTemplate(PROVIDER_TEMPLATES[0]);
+                  setAddProvId('anthropic');
+                  setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
+                  setShowAddModal(true);
+                }}
+                className="flex items-center gap-1.5 rounded-lg bg-[#C93D2A] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#B33423] active:scale-98"
+              >
+                <span>Connect Provider</span>
+                <span className="font-mono text-xs">↗</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       {/* Main Content Shell */}
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main className="mx-auto max-w-7xl px-6 py-8">
         
         {/* Navigation Bar Tabs */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-black/[0.06] pb-3.5 dark:border-white/[0.08]">
-          <div className="flex flex-wrap items-center gap-1 rounded-2xl bg-neutral-200/60 p-1 dark:bg-neutral-900/60">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E0D5] pb-2 dark:border-[#272933]">
+          <nav className="flex flex-wrap items-center gap-1">
             {[
-              { id: 'overview', label: 'Overview', icon: Activity },
-              { id: 'providers', label: 'Providers', icon: Server, badge: providers.length },
-              { id: 'combos', label: 'Combos Studio', icon: Layers, badge: combos.length },
-              { id: 'catalog', label: 'Radar Catalog', icon: Database, badge: catalog.length },
-              { id: 'quota', label: 'Rolling Quota', icon: Shield },
-              { id: 'traffic', label: 'Traffic Inspector', icon: Radio, badge: trafficLogs.length },
-              { id: 'fleet', label: 'Agent Fleet', icon: Terminal, badge: cliAgents.filter(a => a.detected).length },
-              { id: 'settings', label: 'Settings', icon: Settings },
-              { id: 'playground', label: 'Playground', icon: Play },
+              { id: 'overview', num: '01', label: 'Overview' },
+              { id: 'providers', num: '02', label: 'Providers', count: providers.length },
+              { id: 'combos', num: '03', label: 'Combos Studio', count: combos.length },
+              { id: 'catalog', num: '04', label: 'Radar Catalog', count: catalog.length },
+              { id: 'quota', num: '05', label: 'Rolling Quota' },
+              { id: 'traffic', num: '06', label: 'Inspector', count: trafficLogs.length },
+              { id: 'fleet', num: '07', label: 'Agent Fleet', count: cliAgents.filter(a => a.detected).length },
+              { id: 'playground', num: '08', label: 'Playground' },
+              { id: 'settings', num: '09', label: 'Settings' },
             ].map(tab => {
-              const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-all ${
+                  className={`group relative flex items-center gap-1.5 px-3 py-2 text-xs transition ${
                     isActive
-                      ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-white'
-                      : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                      ? 'font-semibold text-[#141518] dark:text-white'
+                      : 'text-[#66655E] hover:text-[#141518] dark:text-[#9597A1] dark:hover:text-white'
                   }`}
                 >
-                  <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-blue-600 dark:text-blue-400' : ''}`} />
+                  <span className={`font-mono text-[10px] ${isActive ? 'text-[#C93D2A]' : 'text-[#98968D]'}`}>
+                    {tab.num}
+                  </span>
                   <span>{tab.label}</span>
-                  {tab.badge !== undefined && (
-                    <span className="rounded-full bg-neutral-200 px-1.5 py-0.2 font-mono text-[10px] text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300">
-                      {tab.badge}
+                  {tab.count !== undefined && (
+                    <span className="font-mono text-[10px] text-[#98968D]">
+                      ({tab.count})
                     </span>
+                  )}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#C93D2A]" />
                   )}
                 </button>
               );
             })}
-          </div>
+          </nav>
 
-          {/* Quick Model Search */}
-          <div className="relative min-w-[240px]">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-neutral-400" />
+          <div className="relative min-w-[220px]">
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#98968D]" />
             <input
               type="text"
-              placeholder="Search models, providers, combos..."
+              placeholder="Search models, providers..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-black/[0.06] bg-white/80 py-1.5 pl-9 pr-3 text-xs outline-none transition focus:border-blue-500/50 dark:border-white/[0.08] dark:bg-neutral-800/80"
+              className="w-full rounded-lg border border-[#E2E0D5] bg-white py-1.5 pl-9 pr-3 text-xs outline-none transition focus:border-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22]"
             />
           </div>
         </div>
 
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
+          <div className="space-y-10">
+            {/* Hero Section */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#E2E0D5] pb-6 dark:border-[#272933]">
+              <div>
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
+                  <span className="text-[#C93D2A]">▪ 01</span>
+                  <span>/</span>
+                  <span>THE SYSTEM</span>
+                </div>
+                <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-[#141518] dark:text-[#F4F4F6]">
+                  Ultra-low latency. <span className="text-[#C93D2A] dark:text-[#E24B38]">Minimal footprint.</span>
+                </h1>
+                <p className="mt-1.5 text-xs text-[#66655E] dark:text-[#9597A1]">
+                  High-throughput universal AI gateway orchestrating local pools and remote models.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-mono text-[11px] text-[#66655E] dark:text-[#9597A1]">Status:</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                  Operational
+                </span>
+              </div>
+            </div>
+
+            {/* Editorial 4-Stat Strip */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="liquid-card p-5">
-                <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-                  <span>Daemon Engine</span>
-                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                    Purego C-ABI
-                  </span>
+              <div className="liquid-card p-6">
+                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                  01. / DISPATCH LATENCY
                 </div>
-                <div className="mt-2 text-2xl font-bold tracking-tight">Go + Rust SIMD</div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                  <span className="pulse-indicator" />
-                  <span>{gatewayMem} RSS • 0.86ms latency</span>
+                <div className="mt-3 flex items-baseline">
+                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">0.86</span>
+                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">ms</span>
                 </div>
-              </div>
-
-              <div className="liquid-card p-5">
-                <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-                  <span>Upstream Providers</span>
-                  <span className="font-mono text-[11px] text-blue-500">Active Pools</span>
-                </div>
-                <div className="mt-2 text-2xl font-bold tracking-tight">{providers.length} Active</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  Antigravity (4 accts), Kiro, Codex, Apinex, Groq
+                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Sub-Millisecond</div>
+                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                  Purego C-ABI routing pipeline
                 </div>
               </div>
 
-              <div className="liquid-card p-5">
-                <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-                  <span>Routing Combos</span>
-                  <span className="font-mono text-[11px] text-purple-500">Failover Chains</span>
+              <div className="liquid-card p-6">
+                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                  02. / MEMORY FOOTPRINT
                 </div>
-                <div className="mt-2 text-2xl font-bold tracking-tight">{combos.length} Ready</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  Autonomous waterfall failover armed
+                <div className="mt-3 flex items-baseline">
+                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">{gatewayMem.replace(/[^0-9.]/g, '') || '4.5'}</span>
+                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">MB</span>
+                </div>
+                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Near-Zero RSS</div>
+                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                  Compact daemon memory usage
                 </div>
               </div>
 
-              <div className="liquid-card p-5">
-                <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-                  <span>Synced Radar Models</span>
-                  <span className="font-mono text-[11px] text-amber-500">SQLite Catalog</span>
+              <div className="liquid-card p-6">
+                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                  03. / UPSTREAM POOLS
                 </div>
-                <div className="mt-2 text-2xl font-bold tracking-tight">{catalog.length} Models</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  Auto-synced with upstream quotas
+                <div className="mt-3 flex items-baseline">
+                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">{providers.length}</span>
+                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">Active</span>
+                </div>
+                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Aggregated Accounts</div>
+                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                  Antigravity, Kiro, Codex, Apinex, Groq
+                </div>
+              </div>
+
+              <div className="liquid-card p-6">
+                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                  04. / RADAR CATALOG
+                </div>
+                <div className="mt-3 flex items-baseline">
+                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">{catalog.length}</span>
+                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">Models</span>
+                </div>
+                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Live Capabilities</div>
+                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                  Auto-mapped model intelligence
                 </div>
               </div>
             </div>
 
-            {/* Middle Section: Topology & Quick Actions */}
+            {/* Middle Section: Cascades & Host Fleet */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="liquid-card col-span-2 p-6">
-                <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
+                <div className="flex items-center justify-between border-b border-[#E2E0D5] pb-4 dark:border-[#272933]">
                   <div>
-                    <h3 className="font-semibold tracking-tight">Active Failover Cascades</h3>
-                    <p className="text-xs text-neutral-500">Resilient routing sequences across pools</p>
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
+                      <span className="text-[#C93D2A]">▪ 02</span>
+                      <span>/</span>
+                      <span>ROUTING CASCADES</span>
+                    </div>
+                    <h3 className="mt-1 text-sm font-bold text-[#141518] dark:text-white">Active Failover Cascades</h3>
                   </div>
                   <button
                     onClick={() => setActiveTab('combos')}
-                    className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
+                    className="flex items-center gap-1 text-xs font-semibold text-[#C93D2A] hover:underline"
                   >
                     <span>Combos Studio</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span>↗</span>
                   </button>
                 </div>
 
-                <div className="mt-5 space-y-3">
+                <div className="mt-4 space-y-3">
                   {combos.slice(0, 4).map(c => (
-                    <div key={c.name} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-black/[0.04] bg-neutral-50/80 p-3.5 dark:border-white/[0.04] dark:bg-neutral-800/50">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
-                          🔀
-                        </div>
-                        <div>
-                          <span className="font-mono font-semibold text-neutral-900 dark:text-white">{c.name}</span>
-                          <span className="ml-2 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600 dark:text-blue-400">
-                            {c.strategy}
-                          </span>
-                        </div>
+                    <div
+                      key={c.name}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E2E0D5] bg-[#FAF9F5] p-3.5 transition hover:border-[#C93D2A]/40 dark:border-[#272933] dark:bg-[#15161C]"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono text-xs font-bold text-[#141518] dark:text-white">{c.name}</span>
+                        <span className="rounded border border-[#E2E0D5] bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#66655E] dark:border-[#272933] dark:bg-[#1E2028] dark:text-[#9597A1]">
+                          {c.strategy}
+                        </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+                      <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-[#66655E] dark:text-[#9597A1]">
                         {c.targets?.map((t: any, idx: number) => (
                           <React.Fragment key={idx}>
-                            <span className="rounded-md bg-white px-2 py-1 shadow-xs dark:bg-neutral-700">
+                            <span className="rounded border border-[#E2E0D5] bg-white px-2 py-0.5 text-[#141518] shadow-2xs dark:border-[#272933] dark:bg-[#1E2028] dark:text-[#F4F4F6]">
                               {t.provider_id}/{t.model}
                             </span>
-                            {idx < c.targets.length - 1 && <span className="text-neutral-400">→</span>}
+                            {idx < c.targets.length - 1 && <span className="text-[#98968D]">→</span>}
                           </React.Fragment>
                         ))}
                       </div>
@@ -633,51 +662,69 @@ export default function GoRouteDashboard() {
                           setPlaygroundModel(c.name);
                           setActiveTab('playground');
                         }}
-                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700"
+                        className="flex items-center gap-1 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1 text-xs font-semibold text-[#141518] transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
                       >
-                        Test
+                        <span>Test Run</span>
+                        <span className="font-mono text-[10px]">↗</span>
                       </button>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Quick CLI Connect Sidebar */}
+              {/* Host AI Developer Tools */}
               <div className="liquid-card p-6">
-                <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
-                  <h3 className="font-semibold tracking-tight">Host AI CLI Fleet</h3>
-                  <span className="text-xs text-neutral-400">
+                <div className="flex items-center justify-between border-b border-[#E2E0D5] pb-4 dark:border-[#272933]">
+                  <div>
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
+                      <span className="text-[#C93D2A]">▪ 03</span>
+                      <span>/</span>
+                      <span>LOCAL AGENTS</span>
+                    </div>
+                    <h3 className="mt-1 text-sm font-bold text-[#141518] dark:text-white">Host AI Fleet</h3>
+                  </div>
+                  <span className="font-mono text-[11px] text-[#98968D]">
                     {cliAgents.filter(a => a.detected).length} Detected
                   </span>
                 </div>
 
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 space-y-2.5">
                   {cliAgents.filter(a => a.detected).slice(0, 5).map(agent => (
-                    <div key={agent.id} className="flex items-center justify-between rounded-xl border border-black/[0.04] p-3 text-xs dark:border-white/[0.04]">
+                    <div
+                      key={agent.id}
+                      className="flex items-center justify-between rounded-xl border border-[#E2E0D5] bg-[#FAF9F5] p-3 transition hover:border-[#C93D2A]/40 dark:border-[#272933] dark:bg-[#15161C]"
+                    >
                       <div>
-                        <div className="font-semibold text-neutral-900 dark:text-white">{agent.name}</div>
-                        <div className="font-mono text-[10px] text-neutral-400">{agent.settings_file}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                          <span className="text-xs font-bold text-[#141518] dark:text-white">{agent.name}</span>
+                        </div>
+                        <p className="mt-0.5 truncate font-mono text-[10px] text-[#98968D] max-w-[160px]">
+                          {agent.settings_file}
+                        </p>
                       </div>
+
                       <button
                         onClick={() => handleConfigureCli(agent.id)}
-                        className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
+                        className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                           agent.configured
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-[#C93D2A] text-white hover:bg-[#B33423]'
                         }`}
                       >
-                        {agent.configured ? 'Connected ✓' : 'Connect'}
+                        <span>{agent.configured ? 'Connected ✓' : 'Connect'}</span>
+                        {!agent.configured && <span className="font-mono text-[10px]">↗</span>}
                       </button>
                     </div>
                   ))}
-                </div>
 
-                <button
-                  onClick={() => setActiveTab('fleet')}
-                  className="mt-4 w-full rounded-xl border border-black/[0.06] py-2 text-center text-xs font-medium text-neutral-600 hover:bg-neutral-100 dark:border-white/[0.08] dark:text-neutral-300 dark:hover:bg-neutral-800"
-                >
-                  View All 35 CLI Tools
-                </button>
+                  <button
+                    onClick={() => setActiveTab('fleet')}
+                    className="mt-2 w-full rounded-lg border border-[#E2E0D5] bg-white py-2 text-center text-xs font-semibold text-[#141518] transition hover:bg-[#FAF9F5] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
+                  >
+                    View All 35 CLI Agents ↗
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -686,26 +733,32 @@ export default function GoRouteDashboard() {
         {/* TAB: PROVIDERS & MULTI-ACCOUNT MANAGER */}
         {activeTab === 'providers' && (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E0D5] pb-4 dark:border-[#272933]">
               <div>
-                <h2 className="text-base font-semibold tracking-tight">Upstream Providers & Account Pools</h2>
-                <p className="text-xs text-neutral-500">Granular account pooling, individual health checks, and priority failover</p>
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
+                  <span className="text-[#C93D2A]">▪ 02</span>
+                  <span>/</span>
+                  <span>UPSTREAM POOLS</span>
+                </div>
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-[#141518] dark:text-white">Providers & Account Pools</h2>
+                <p className="mt-0.5 text-xs text-[#66655E] dark:text-[#9597A1]">Granular multi-account failover, quota pooling, and zero-downtime health monitors</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleImportLocalAntigravity}
-                  className="flex items-center gap-1.5 rounded-xl border border-purple-500/20 bg-purple-50/60 px-3.5 py-2 text-xs font-semibold text-purple-700 shadow-xs hover:bg-purple-100/80 dark:border-purple-400/20 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/50"
+                  className="flex items-center gap-1.5 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#141518] shadow-2xs transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
                   title="Discover and import locally logged-in Antigravity accounts from IDE & CLI"
                 >
-                  <Zap className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                  <Zap className="h-3.5 w-3.5 text-[#C93D2A]" />
                   <span>Import Local Antigravity</span>
+                  <span className="font-mono text-xs">↗</span>
                 </button>
                 <button
                   onClick={handleSyncFromOmniRoute}
-                  className="flex items-center gap-1.5 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 shadow-xs hover:bg-neutral-50 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-200"
+                  className="flex items-center gap-1.5 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#66655E] shadow-2xs transition hover:text-[#141518] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-[#9597A1] dark:hover:text-white"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 text-blue-500" />
-                  <span>Sync from OmniRoute</span>
+                  <RefreshCw className="h-3.5 w-3.5 text-[#98968D]" />
+                  <span>Sync OmniRoute</span>
                 </button>
                 <button
                   onClick={() => {
@@ -714,10 +767,11 @@ export default function GoRouteDashboard() {
                     setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
                     setShowAddModal(true);
                   }}
-                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                  className="flex items-center gap-1.5 rounded-lg bg-[#C93D2A] px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#B33423]"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  <span>Add Upstream Provider</span>
+                  <span>Connect Provider</span>
+                  <span className="font-mono text-xs">↗</span>
                 </button>
               </div>
             </div>
@@ -735,32 +789,33 @@ export default function GoRouteDashboard() {
                     <div key={p.id} className="liquid-card overflow-hidden">
                       <div className="flex flex-wrap items-center justify-between gap-4 p-5">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">
+                          <span className="text-xl">
                             {p.id.includes('antigravity') ? '⚡' : p.id.includes('kiro') ? '☁️' : p.id.includes('codex') ? '💻' : p.id.includes('deepseek') ? '🐳' : '🤖'}
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">{p.id}</h3>
-                              <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-mono text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                              <h3 className="font-bold text-[#141518] dark:text-[#F4F4F6]">{p.id}</h3>
+                              <span className="rounded border border-[#E2E0D5] bg-[#FAF9F5] px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#66655E] dark:border-[#272933] dark:bg-[#1E2028] dark:text-[#9597A1]">
                                 {pType}
                               </span>
                             </div>
-                            <span className="text-xs text-neutral-400">
+                            <span className="font-mono text-xs text-[#98968D]">
                               {p.details?.base_url || 'Internal OAuth Token Provider'}
                             </span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                            <span className="pulse-indicator" /> {accCount} Account{accCount !== 1 ? 's' : ''} in Pool
+                          <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                            {accCount} Pool Account{accCount !== 1 ? 's' : ''}
                           </span>
 
                           <button
                             onClick={() => handleTestPing(p.id)}
-                            className="flex items-center gap-1 rounded-xl border border-black/[0.06] bg-neutral-100/80 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-200 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-300"
+                            className="flex items-center gap-1 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#141518] transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
                           >
-                            <Zap className="h-3 w-3 text-amber-500" />
+                            <Zap className="h-3 w-3 text-[#C93D2A]" />
                             <span>Test Ping</span>
                           </button>
 
@@ -769,7 +824,7 @@ export default function GoRouteDashboard() {
                               setPlaygroundModel(p.id === 'kiro' ? 'kiro/claude-sonnet-4.5' : p.id === 'antigravity' ? 'antigravity/claude-sonnet-4-6' : `${p.id}/default`);
                               setActiveTab('playground');
                             }}
-                            className="flex items-center gap-1 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
+                            className="flex items-center gap-1 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#141518] transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
                           >
                             <Play className="h-3 w-3" />
                             <span>Playground</span>
@@ -777,7 +832,7 @@ export default function GoRouteDashboard() {
 
                           <button
                             onClick={() => setExpandedProvider(isExpanded ? null : p.id)}
-                            className="flex h-8 w-8 items-center justify-center rounded-xl border border-black/[0.06] text-neutral-500 hover:bg-neutral-100 dark:border-white/[0.08] dark:hover:bg-neutral-800"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E0D5] text-[#66655E] hover:bg-[#FAF9F5] dark:border-[#272933] dark:hover:bg-[#23252E]"
                           >
                             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           </button>
@@ -1447,10 +1502,10 @@ export default function GoRouteDashboard() {
                       setAddProvId(t.id);
                       setAddBaseUrl(t.baseUrl);
                     }}
-                    className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs transition ${
+                    className={`flex items-center gap-2 rounded-lg border p-2.5 text-left text-xs transition ${
                       selectedTemplate.id === t.id
-                        ? 'border-blue-500 bg-blue-50/50 font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                        : 'border-black/[0.04] bg-white hover:bg-neutral-50 dark:border-white/[0.04] dark:bg-neutral-800/60'
+                        ? 'border-[#C93D2A] bg-[#FAF9F5] font-semibold text-[#C93D2A] dark:border-[#E24B38] dark:bg-[#1C1D24] dark:text-[#E24B38]'
+                        : 'border-[#E2E0D5] bg-white hover:bg-[#FAF9F5] dark:border-[#272933] dark:bg-[#1A1B22]'
                     }`}
                   >
                     <span className="text-base">{t.icon}</span>
@@ -1691,7 +1746,7 @@ export default function GoRouteDashboard() {
                     showToast(`❌ Error: ${e.message}`);
                   }
                 }}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                className="rounded-lg bg-[#C93D2A] px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-[#B33423] transition"
               >
                 Save Connection
               </button>
@@ -1819,7 +1874,7 @@ export default function GoRouteDashboard() {
                     showToast(`Error: ${e.message}`);
                   }
                 }}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                className="rounded-lg bg-[#C93D2A] px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-[#B33423] transition"
               >
                 Create Waterfall Combo
               </button>
@@ -1886,7 +1941,7 @@ export default function GoRouteDashboard() {
                     showToast(`Error: ${e.message}`);
                   }
                 }}
-                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                className="rounded-lg bg-[#C93D2A] px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-[#B33423] transition"
               >
                 Save Alias
               </button>

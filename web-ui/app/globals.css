@@ -2,35 +2,35 @@
 
 @layer base {
   :root {
-    --bg-base: #F8F6F1;
-    --bg-surface: rgba(255, 255, 255, 0.88);
-    --bg-card: rgba(255, 255, 255, 0.94);
-    --bg-hover: #F2EFE7;
-    --border-color: rgba(28, 25, 23, 0.08);
-    --border-subtle: rgba(28, 25, 23, 0.04);
-    --text-main: #18181B;
-    --text-muted: #71717A;
-    --text-dim: #A1A1AA;
-    --accent: #2563EB;
-    --accent-hover: #1D4ED8;
-    --success: #059669;
-    --warning: #D97706;
+    --bg-base: #F4F3ED;
+    --bg-surface: #FFFFFF;
+    --bg-card: #FFFFFF;
+    --bg-hover: #ECEAE2;
+    --border-color: #E2E0D5;
+    --border-subtle: #ECE9DE;
+    --text-main: #141518;
+    --text-muted: #66655E;
+    --text-dim: #98968D;
+    --accent: #C93D2A;
+    --accent-hover: #B33423;
+    --success: #15803D;
+    --warning: #B45309;
     --danger: #DC2626;
   }
 
   .dark {
-    --bg-base: #090A0F;
-    --bg-surface: rgba(18, 20, 29, 0.82);
-    --bg-card: rgba(22, 25, 37, 0.90);
-    --bg-hover: #1E2233;
-    --border-color: rgba(255, 255, 255, 0.08);
-    --border-subtle: rgba(255, 255, 255, 0.04);
-    --text-main: #F4F4F5;
-    --text-muted: #A1A1AA;
-    --text-dim: #71717A;
-    --accent: #3B82F6;
-    --accent-hover: #60A5FA;
-    --success: #10B981;
+    --bg-base: #0F1013;
+    --bg-surface: #17181D;
+    --bg-card: #1A1B22;
+    --bg-hover: #23252E;
+    --border-color: #272933;
+    --border-subtle: #1F2028;
+    --text-main: #F4F4F6;
+    --text-muted: #9597A1;
+    --text-dim: #636570;
+    --accent: #E24B38;
+    --accent-hover: #F05E4C;
+    --success: #22C55E;
     --warning: #F59E0B;
     --danger: #EF4444;
   }
@@ -45,57 +45,38 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    letter-spacing: -0.01em;
   }
 }
 
 /* Glassmorphism & Liquid Glass */
 .liquid-glass {
   background: var(--bg-surface);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid var(--border-color);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 10px 30px -10px rgba(0, 0, 0, 0.04);
-}
-
-.dark .liquid-glass {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px -10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .liquid-card {
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 4px 20px -2px rgba(0, 0, 0, 0.03);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.025), 0 6px 16px -4px rgba(0, 0, 0, 0.015);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark .liquid-card {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 4px 20px -2px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 6px 16px -4px rgba(0, 0, 0, 0.3);
 }
 
 .liquid-card:hover {
-  border-color: rgba(37, 99, 235, 0.35);
-  transform: translateY(-2px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 12px 32px -4px rgba(37, 99, 235, 0.08);
+  border-color: rgba(201, 61, 42, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px -2px rgba(201, 61, 42, 0.06);
 }
 
 .dark .liquid-card:hover {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 12px 32px -4px rgba(59, 130, 246, 0.15);
+  border-color: rgba(226, 75, 56, 0.45);
+  box-shadow: 0 4px 20px -2px rgba(226, 75, 56, 0.12);
 }
 
 /* Three-Layer Background: Ambient Aurora Mesh */
