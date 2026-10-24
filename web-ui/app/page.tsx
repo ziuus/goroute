@@ -911,7 +911,7 @@ export default function GoRouteDashboard() {
                                   </button>
                                   <button
                                     onClick={() => handleDeleteAccount(p.id, acc.id)}
-                                    className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                                    className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600"
                                     title="Delete Account"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
@@ -921,7 +921,7 @@ export default function GoRouteDashboard() {
                             ))}
 
                             {accounts.length === 0 && (
-                              <div className="rounded-xl border border-dashed border-neutral-300 p-4 text-center text-xs text-neutral-400 dark:border-neutral-700">
+                              <div className="rounded-xl border border-dashed border-neutral-300 p-4 text-center text-xs text-slate-400 dark:text-slate-500 dark:border-neutral-700">
                                 No individual account objects mapped. Uses root provider credentials.
                               </div>
                             )}
@@ -941,11 +941,11 @@ export default function GoRouteDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Combos Studio & Failover Cascades</h2>
-                <p className="text-xs text-neutral-500">Autonomous waterfall failover chains across multiple upstream AI accounts</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Autonomous waterfall failover chains across multiple upstream AI accounts</p>
               </div>
               <button
                 onClick={() => setShowNewComboModal(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 "
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Create Combo</span>
@@ -961,11 +961,11 @@ export default function GoRouteDashboard() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-500/10 font-mono text-sm font-bold text-purple-600 dark:text-purple-400">
-                          🔀
+                          
                         </div>
                         <div>
                           <h3 className="font-mono text-sm font-semibold">{c.name}</h3>
-                          <span className="text-[11px] text-neutral-400">{strategy} strategy</span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">{strategy} strategy</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -974,7 +974,7 @@ export default function GoRouteDashboard() {
                         </span>
                         <button
                           onClick={() => handleDeleteCombo(c.name)}
-                          className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                          className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600"
                           title="Delete Combo"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -982,18 +982,18 @@ export default function GoRouteDashboard() {
                       </div>
                     </div>
 
-                    <div className="mt-4 space-y-2 rounded-xl bg-neutral-100/70 p-3 font-mono text-xs dark:bg-neutral-800/70">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                    <div className="mt-4 space-y-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 p-3 font-mono text-xs dark:bg-slate-800/70">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                         Cascade Waterfall Order:
                       </div>
                       <div className="space-y-1.5">
                         {targets.map((t: any, i: number) => (
-                          <div key={i} className="flex items-center gap-2 text-neutral-700 dark:text-neutral-300">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">
+                          <div key={i} className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-400 dark:bg-slate-700 dark:text-neutral-300">
                               {i + 1}
                             </span>
-                            <span className="font-semibold text-neutral-900 dark:text-white">{t.provider_id}</span>
-                            <span className="text-neutral-400">/</span>
+                            <span className="font-semibold text-slate-900 dark:text-white">{t.provider_id}</span>
+                            <span className="text-slate-400 dark:text-slate-500">/</span>
                             <span>{t.model}</span>
                           </div>
                         ))}
@@ -1006,7 +1006,7 @@ export default function GoRouteDashboard() {
                           setPlaygroundModel(c.name);
                           setActiveTab('playground');
                         }}
-                        className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700"
+                        className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-3.5 py-1.5 text-xs font-medium text-white transition "
                       >
                         <Play className="h-3 w-3" /> Test in Playground
                       </button>
@@ -1024,19 +1024,19 @@ export default function GoRouteDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Radar Model Catalog</h2>
-                <p className="text-xs text-neutral-500">Live indexed models stored in SQLite with real-time upstream sync</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Live indexed models stored in SQLite with real-time upstream sync</p>
               </div>
 
               {/* Provider Filter Tabs */}
-              <div className="flex flex-wrap gap-1 rounded-xl bg-neutral-200/50 p-1 text-xs dark:bg-neutral-800/50">
+              <div className="flex flex-wrap gap-1 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 p-1 text-xs dark:bg-slate-800/50">
                 {['all', 'antigravity', 'kiro', 'codex', 'openai-compatible', 'agentrouter'].map(prov => (
                   <button
                     key={prov}
                     onClick={() => setCatalogFilterProvider(prov)}
                     className={`rounded-lg px-2.5 py-1 font-mono transition ${
                       catalogFilterProvider === prov
-                        ? 'bg-white font-semibold text-neutral-900 shadow-xs dark:bg-neutral-700 dark:text-white'
-                        : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                        ? 'bg-white font-semibold text-slate-900 dark:text-white shadow-xs dark:bg-slate-700 dark:text-white'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:text-white dark:hover:text-white'
                     }`}
                   >
                     {prov}
@@ -1048,7 +1048,7 @@ export default function GoRouteDashboard() {
             <div className="liquid-card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-50 font-mono text-neutral-400 dark:bg-neutral-800/40">
+                  <thead className="bg-slate-50 dark:bg-slate-800/40 font-mono text-slate-400 dark:text-slate-500 dark:bg-slate-800/40">
                     <tr>
                       <th className="p-3.5">Model Name</th>
                       <th className="p-3.5">Provider</th>
@@ -1061,12 +1061,12 @@ export default function GoRouteDashboard() {
                   <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                     {filteredCatalog.slice(0, 30).map((item, idx) => (
                       <tr key={idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
-                        <td className="p-3.5 font-mono font-semibold text-neutral-900 dark:text-neutral-100">
+                        <td className="p-3.5 font-mono font-semibold text-slate-900 dark:text-white">
                           {item.model}
                         </td>
-                        <td className="p-3.5 font-mono text-neutral-500">{item.provider}</td>
-                        <td className="p-3.5 font-mono text-neutral-500">{item.latencyP50 || 180}ms</td>
-                        <td className="p-3.5 font-mono text-neutral-500">{item.latencyP99 || 540}ms</td>
+                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{item.provider}</td>
+                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{item.latencyP50 || 180}ms</td>
+                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{item.latencyP99 || 540}ms</td>
                         <td className="p-3.5">
                           <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
                             {item.status || 'online'}
@@ -1078,7 +1078,7 @@ export default function GoRouteDashboard() {
                               setPlaygroundModel(item.model);
                               setActiveTab('playground');
                             }}
-                            className="rounded-lg bg-blue-50 px-2.5 py-1 font-mono text-[11px] font-medium text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
+                            className="rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-2.5 py-1 font-mono text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-blue-100 "
                           >
                             Playground
                           </button>
@@ -1097,24 +1097,24 @@ export default function GoRouteDashboard() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="liquid-card p-5">
-                <span className="text-xs text-neutral-500">Monitored Accounts</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Monitored Accounts</span>
                 <div className="mt-1 font-mono text-2xl font-bold">{quotas?.providers?.length || 7}</div>
                 <span className="text-[11px] text-emerald-600 dark:text-emerald-400">100% active</span>
               </div>
               <div className="liquid-card p-5">
-                <span className="text-xs text-neutral-500">Rolling Window Status</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Rolling Window Status</span>
                 <div className="mt-1 font-mono text-2xl font-bold text-emerald-600 dark:text-emerald-400">Healthy</div>
-                <span className="text-[11px] text-neutral-400">Zero rate-limit backoffs</span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">Zero rate-limit backoffs</span>
               </div>
               <div className="liquid-card p-5">
-                <span className="text-xs text-neutral-500">Pre-emptive Failover</span>
-                <div className="mt-1 font-mono text-2xl font-bold text-blue-600 dark:text-blue-400">Armed</div>
-                <span className="text-[11px] text-neutral-400">Auto-rotates at 5% cap</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Pre-emptive Failover</span>
+                <div className="mt-1 font-mono text-2xl font-bold text-rose-600 dark:text-rose-400 dark:text-blue-400">Armed</div>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">Auto-rotates at 5% cap</span>
               </div>
               <div className="liquid-card p-5">
-                <span className="text-xs text-neutral-500">Active Radar Catalog</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Active Radar Catalog</span>
                 <div className="mt-1 font-mono text-2xl font-bold">{catalog.length || 148}</div>
-                <span className="text-[11px] text-neutral-400">Models synced in SQLite</span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">Models synced in SQLite</span>
               </div>
             </div>
 
@@ -1127,25 +1127,25 @@ export default function GoRouteDashboard() {
                   <div key={idx} className="liquid-card p-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="font-semibold text-neutral-900 dark:text-neutral-100">{qp.name || qp.provider}</h4>
-                        <span className="font-mono text-xs text-neutral-400">{qp.provider}</span>
+                        <h4 className="font-semibold text-slate-900 dark:text-white">{qp.name || qp.provider}</h4>
+                        <span className="font-mono text-xs text-slate-400 dark:text-slate-500">{qp.provider}</span>
                       </div>
                       <span className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-medium ${
-                        isUnlimited ? 'bg-blue-500/10 text-blue-600' : 'bg-emerald-500/10 text-emerald-600'
+                        isUnlimited ? 'border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-2000/10 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/10 text-emerald-600'
                       }`}>
                         {isUnlimited ? 'Pay-as-you-go' : 'Active'}
                       </span>
                     </div>
 
                     <div className="mt-4">
-                      <div className="flex justify-between text-xs text-neutral-500">
+                      <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
                         <span>5h Rolling Session</span>
-                        <span className="font-semibold text-neutral-800 dark:text-neutral-200">{remPct}% left</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{remPct}% left</span>
                       </div>
-                      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+                      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700 dark:bg-slate-800">
                         <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${remPct}%` }} />
                       </div>
-                      <div className="mt-2 flex justify-between text-[11px] text-neutral-400">
+                      <div className="mt-2 flex justify-between text-[11px] text-slate-400 dark:text-slate-500">
                         <span>Countdown to Reset:</span>
                         <span className="font-mono font-medium">{cd}</span>
                       </div>
@@ -1163,14 +1163,14 @@ export default function GoRouteDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Real-Time Traffic Stream</h2>
-                <p className="text-xs text-neutral-500">Click any request row to inspect full headers, tokens, and response payloads</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Click any request row to inspect full headers, tokens, and response payloads</p>
               </div>
             </div>
 
             <div className="liquid-card overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-50 font-mono text-neutral-400 dark:bg-neutral-800/40">
+                  <thead className="bg-slate-50 dark:bg-slate-800/40 font-mono text-slate-400 dark:text-slate-500 dark:bg-slate-800/40">
                     <tr>
                       <th className="p-3.5">Model</th>
                       <th className="p-3.5">Tokens</th>
@@ -1187,9 +1187,9 @@ export default function GoRouteDashboard() {
                         onClick={() => setInspectingLog(log)}
                         className="cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
                       >
-                        <td className="p-3.5 font-mono font-semibold text-neutral-800 dark:text-neutral-200">{log.model}</td>
-                        <td className="p-3.5 font-mono text-neutral-500">{log.tokens || log.prompt_tokens || '14'} tok</td>
-                        <td className="p-3.5 font-mono text-neutral-500">{log.latency_ms || log.duration_ms || 230}ms</td>
+                        <td className="p-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200">{log.model}</td>
+                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{log.tokens || log.prompt_tokens || '14'} tok</td>
+                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{log.latency_ms || log.duration_ms || 230}ms</td>
                         <td className="p-3.5">
                           <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ${
                             (log.status_code || log.status) >= 400 ? 'bg-red-500/10 text-red-600' : 'bg-emerald-500/10 text-emerald-600'
@@ -1197,14 +1197,14 @@ export default function GoRouteDashboard() {
                             {log.status_code || log.status || 200} OK
                           </span>
                         </td>
-                        <td className="p-3.5 text-neutral-400">{new Date(log.created_at || log.timestamp || Date.now()).toLocaleTimeString()}</td>
+                        <td className="p-3.5 text-slate-400 dark:text-slate-500">{new Date(log.created_at || log.timestamp || Date.now()).toLocaleTimeString()}</td>
                         <td className="p-3.5 text-right">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleReplayLog(log.id || `req_${i}`);
                             }}
-                            className="flex items-center gap-1 rounded-lg border border-black/[0.06] px-2.5 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100 dark:border-white/[0.08] dark:text-neutral-300 dark:hover:bg-neutral-800"
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-800 dark:text-neutral-300 dark:hover:bg-neutral-800"
                           >
                             <RotateCcw className="h-3 w-3" /> Replay
                           </button>
@@ -1224,7 +1224,7 @@ export default function GoRouteDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Active Host AI CLI Fleet</h2>
-                <p className="text-xs text-neutral-500">Auto-detected terminal agents and IDE tools on this system</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Auto-detected terminal agents and IDE tools on this system</p>
               </div>
             </div>
 
@@ -1234,34 +1234,34 @@ export default function GoRouteDashboard() {
                   <div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <Terminal className="h-5 w-5 text-blue-500" />
+                        <Terminal className="h-5 w-5 text-rose-500" />
                         <div>
-                          <h4 className="font-semibold text-neutral-900 dark:text-neutral-100">{agent.name}</h4>
-                          <span className="font-mono text-[11px] text-neutral-400">{agent.id}</span>
+                          <h4 className="font-semibold text-slate-900 dark:text-white">{agent.name}</h4>
+                          <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">{agent.id}</span>
                         </div>
                       </div>
                       <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-medium ${
-                        agent.detected ? 'bg-emerald-500/10 text-emerald-600' : 'bg-neutral-200/50 text-neutral-400'
+                        agent.detected ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
                       }`}>
                         {agent.detected ? 'Detected' : 'Not installed'}
                       </span>
                     </div>
 
-                    <p className="mt-3 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                    <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                       {agent.description}
                     </p>
 
-                    <div className="mt-3 rounded-lg bg-neutral-100/60 p-2 font-mono text-[10px] text-neutral-600 dark:bg-neutral-800/60 dark:text-neutral-400">
+                    <div className="mt-3 rounded-lg bg-slate-100/80 dark:bg-slate-800/60 p-2 font-mono text-[10px] text-slate-600 dark:text-slate-400 dark:bg-slate-800/60 dark:text-slate-400 dark:text-slate-500">
                       {agent.settings_file}
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between border-t border-black/[0.04] pt-3 dark:border-white/[0.04]">
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3 dark:border-slate-800">
                     <a
                       href={agent.docs_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[11px] text-neutral-500 hover:text-blue-600"
+                      className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:text-rose-400"
                     >
                       <span>Docs</span>
                       <ExternalLink className="h-3 w-3" />
@@ -1274,8 +1274,8 @@ export default function GoRouteDashboard() {
                         agent.configured
                           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                           : agent.detected
-                          ? 'bg-blue-600 text-white shadow-xs hover:bg-blue-700'
-                          : 'cursor-not-allowed bg-neutral-200 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600'
+                          ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs '
+                          : 'cursor-not-allowed bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 dark:bg-slate-800 dark:text-slate-600 dark:text-slate-400'
                       }`}
                     >
                       {agent.configured ? 'Connected ✓' : 'Connect to GoRoute'}
@@ -1293,7 +1293,7 @@ export default function GoRouteDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Gateway Settings & Resiliency Hub</h2>
-                <p className="text-xs text-neutral-500">Configure global model aliases, thinking token budgets, proactive refresh, and database backups</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Configure global model aliases, thinking token budgets, proactive refresh, and database backups</p>
               </div>
             </div>
 
@@ -1301,14 +1301,14 @@ export default function GoRouteDashboard() {
               {/* OmniRoute Sync & Cooldown Actions */}
               <div className="liquid-card p-6">
                 <h3 className="text-sm font-semibold tracking-tight">OmniRoute Synchronization</h3>
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Import credentials, OAuth accounts, and combos directly from local OmniRoute storage.sqlite with pure Go AES-256-GCM.
                 </p>
 
                 <div className="mt-5 flex flex-wrap gap-3">
                   <button
                     onClick={handleSyncFromOmniRoute}
-                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                    className="flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/20 "
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
                     <span>Sync All from OmniRoute</span>
@@ -1316,16 +1316,16 @@ export default function GoRouteDashboard() {
 
                   <button
                     onClick={handleResetCooldowns}
-                    className="flex items-center gap-2 rounded-xl border border-black/[0.06] bg-white px-4 py-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-200"
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:bg-slate-800/40 dark:border-slate-800 dark:bg-slate-800 dark:text-neutral-200"
                   >
                     <Power className="h-3.5 w-3.5 text-emerald-500" />
                     <span>Reset All Cooldowns</span>
                   </button>
                 </div>
 
-                <div className="mt-6 border-t border-black/[0.04] pt-4 dark:border-white/[0.04]">
+                <div className="mt-6 border-t border-slate-200 dark:border-slate-800 pt-4 dark:border-slate-800">
                   <h4 className="text-xs font-semibold">Proactive Token Refresh Scheduler</h4>
-                  <p className="text-[11px] text-neutral-400">Refreshes Kiro AWS Q and Antigravity tokens before expiration.</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">Refreshes Kiro AWS Q and Antigravity tokens before expiration.</p>
                   <div className="mt-2 flex items-center gap-2 font-mono text-xs text-emerald-600 dark:text-emerald-400">
                     <span className="pulse-indicator" /> Running every 3 minutes in background
                   </div>
@@ -1335,13 +1335,13 @@ export default function GoRouteDashboard() {
               {/* Thinking Budget Slider */}
               <div className="liquid-card p-6">
                 <h3 className="text-sm font-semibold tracking-tight">Thinking Token Budget</h3>
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Control thinking budget tokens for reasoning models (Claude 3.7 Sonnet Thinking, Gemini 2.0 Flash Thinking, DeepSeek R1).
                 </p>
 
                 <div className="mt-6">
                   <div className="flex justify-between text-xs">
-                    <span className="text-neutral-500">Budget Limit:</span>
+                    <span className="text-slate-500 dark:text-slate-400">Budget Limit:</span>
                     <span className="font-mono font-bold">{thinkingBudget > 0 ? `${thinkingBudget} tokens` : 'Pass-through (disabled)'}</span>
                   </div>
                   <input
@@ -1353,7 +1353,7 @@ export default function GoRouteDashboard() {
                     onChange={e => setThinkingBudget(parseInt(e.target.value))}
                     className="mt-3 w-full"
                   />
-                  <div className="mt-2 flex justify-between text-[10px] font-mono text-neutral-400">
+                  <div className="mt-2 flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500">
                     <span>0 (Passthrough)</span>
                     <span>16,384</span>
                     <span>32,768</span>
@@ -1373,7 +1373,7 @@ export default function GoRouteDashboard() {
                         showToast(`Update error: ${e.message}`);
                       }
                     }}
-                    className="mt-4 rounded-xl bg-neutral-900 px-4 py-2 text-xs font-semibold text-white dark:bg-white dark:text-neutral-900"
+                    className="mt-4 rounded-xl bg-neutral-900 px-4 py-2 text-xs font-semibold text-white dark:bg-white dark:text-slate-900 dark:text-white"
                   >
                     Save Budget
                   </button>
@@ -1382,14 +1382,14 @@ export default function GoRouteDashboard() {
 
               {/* Model Aliases Manager */}
               <div className="liquid-card col-span-full p-6">
-                <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 dark:border-slate-800">
                   <div>
                     <h3 className="text-sm font-semibold tracking-tight">Model Aliases Mapping</h3>
-                    <p className="text-xs text-neutral-500">Map custom names or IDE models to target models or combo cascades</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Map custom names or IDE models to target models or combo cascades</p>
                   </div>
                   <button
                     onClick={() => setShowAliasModal(true)}
-                    className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+                    className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs "
                   >
                     <Plus className="h-3 w-3" />
                     <span>Add Alias</span>
@@ -1398,10 +1398,10 @@ export default function GoRouteDashboard() {
 
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {Object.entries(aliases).map(([fromModel, toModel]) => (
-                    <div key={fromModel} className="flex items-center justify-between rounded-xl border border-black/[0.04] p-3 text-xs dark:border-white/[0.04]">
+                    <div key={fromModel} className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 p-3 text-xs dark:border-slate-800">
                       <div>
-                        <div className="font-mono font-semibold text-neutral-900 dark:text-white">{fromModel}</div>
-                        <div className="mt-0.5 font-mono text-[11px] text-neutral-400">→ {toModel}</div>
+                        <div className="font-mono font-semibold text-slate-900 dark:text-white">{fromModel}</div>
+                        <div className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">→ {toModel}</div>
                       </div>
                       <button
                         onClick={async () => {
@@ -1409,14 +1409,14 @@ export default function GoRouteDashboard() {
                           showToast(`Deleted alias ${fromModel}`);
                           fetchAllData();
                         }}
-                        className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                        className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   ))}
                   {Object.keys(aliases).length === 0 && (
-                    <div className="col-span-full rounded-xl border border-dashed border-neutral-300 p-6 text-center text-xs text-neutral-400 dark:border-neutral-700">
+                    <div className="col-span-full rounded-xl border border-dashed border-neutral-300 p-6 text-center text-xs text-slate-400 dark:text-slate-500 dark:border-neutral-700">
                       No custom model aliases configured. Click 'Add Alias' to create one!
                     </div>
                   )}
@@ -1429,14 +1429,14 @@ export default function GoRouteDashboard() {
         {/* TAB: PLAYGROUND */}
         {activeTab === 'playground' && (
           <div className="liquid-card grid grid-cols-1 overflow-hidden md:grid-cols-2">
-            <div className="border-r border-black/[0.06] p-6 dark:border-white/[0.08]">
+            <div className="border-r border-slate-200 dark:border-slate-800 p-6 dark:border-slate-800">
               <h3 className="mb-4 text-sm font-semibold tracking-tight">Interactive Prompt Studio</h3>
               <div className="mb-4">
-                <label className="text-xs font-medium text-neutral-500">Target Model / Cascade Combo:</label>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Target Model / Cascade Combo:</label>
                 <select
                   value={playgroundModel}
                   onChange={e => setPlaygroundModel(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-black/[0.06] bg-white p-3 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-3 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 >
                   <optgroup label="Combos">
                     <option value="claude">claude (Antigravity → Kiro)</option>
@@ -1456,28 +1456,28 @@ export default function GoRouteDashboard() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-neutral-500">User Prompt:</label>
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">User Prompt:</label>
                 <textarea
                   rows={8}
                   value={playgroundPrompt}
                   onChange={e => setPlaygroundPrompt(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-black/[0.06] bg-white p-3 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-3 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 />
               </div>
 
               <button
                 onClick={handleSendPlayground}
                 disabled={playgroundLoading}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 py-3 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition "
               >
                 {playgroundLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 <span>{playgroundLoading ? 'Dispatching to GoRoute Core...' : 'Send Request'}</span>
               </button>
             </div>
 
-            <div className="flex flex-col justify-between bg-neutral-50/50 p-6 dark:bg-black/20">
+            <div className="flex flex-col justify-between bg-slate-50 dark:bg-slate-800/40 p-6 dark:bg-black/20">
               <div>
-                <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 dark:border-slate-800">
                   <h3 className="text-sm font-semibold tracking-tight">Streaming Output</h3>
                   {playgroundMeta && (
                     <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
@@ -1485,9 +1485,9 @@ export default function GoRouteDashboard() {
                     </span>
                   )}
                 </div>
-                <div className="mt-4 max-h-[440px] overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
+                <div className="mt-4 max-h-[440px] overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200">
                   {playgroundResponse || (
-                    <span className="italic text-neutral-400">
+                    <span className="italic text-slate-400 dark:text-slate-500">
                       Click 'Send Request' to trigger live inference through GoRoute...
                     </span>
                   )}
@@ -1502,18 +1502,18 @@ export default function GoRouteDashboard() {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="liquid-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-semibold tracking-tight">Connect Upstream Provider</h3>
-                <p className="text-xs text-neutral-500">Select a pre-configured provider or configure a custom endpoint</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Select a pre-configured provider or configure a custom endpoint</p>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+              <button onClick={() => setShowAddModal(false)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:text-slate-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="mt-4">
-              <label className="text-xs font-semibold text-neutral-500">Choose Provider Directory:</label>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Choose Provider Directory:</label>
               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 max-h-48 overflow-y-auto p-1">
                 {PROVIDER_TEMPLATES.map(t => (
                   <button
@@ -1536,36 +1536,36 @@ export default function GoRouteDashboard() {
               </div>
             </div>
 
-            <div className="mt-5 space-y-3.5 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+            <div className="mt-5 space-y-3.5 border-t border-slate-200 dark:border-slate-800 pt-4 dark:border-slate-800">
               <div>
-                <label className="text-xs text-neutral-500">Provider ID</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Provider ID</label>
                 <input
                   type="text"
                   value={addProvId}
                   onChange={e => setAddProvId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 />
               </div>
 
               {selectedTemplate.type !== 'kiro' && selectedTemplate.type !== 'antigravity' && selectedTemplate.type !== 'codex' && selectedTemplate.type !== 'cursor' && selectedTemplate.type !== 'copilot' && (
                 <>
                   <div>
-                    <label className="text-xs text-neutral-500">Base URL</label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Base URL</label>
                     <input
                       type="text"
                       value={addBaseUrl}
                       onChange={e => setAddBaseUrl(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-neutral-500">API Key</label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">API Key</label>
                     <input
                       type="password"
                       placeholder="sk-..."
                       value={addApiKey}
                       onChange={e => setAddApiKey(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                     />
                   </div>
                 </>
@@ -1579,10 +1579,10 @@ export default function GoRouteDashboard() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-bold text-white">1</span>
-                          <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import Local Antigravity (IDE & CLI)</h4>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import Local Antigravity (IDE & CLI)</h4>
                           <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Recommended</span>
                         </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
                           Instantly scans locally logged-in Google Antigravity tokens from Antigravity IDE SQLite state (<code className="font-mono text-[10px]">state.vscdb</code>) and CLI OAuth files. Automatically provisions refresh tokens into the active quota pool without re-logging in.
                         </p>
                       </div>
@@ -1603,12 +1603,12 @@ export default function GoRouteDashboard() {
                   </div>
 
                   {/* Option 2: Manual Refresh Token */}
-                  <div className="rounded-2xl border border-black/[0.06] bg-neutral-50/60 p-4 dark:border-white/[0.06] dark:bg-neutral-900/40">
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40/60 p-4 dark:border-slate-800 dark:bg-slate-900/40">
                     <div className="flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-500 text-[10px] font-bold text-white">2</span>
-                      <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Manual Refresh Token Input</h4>
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-50 dark:bg-slate-800/400 text-[10px] font-bold text-white">2</span>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white">Manual Refresh Token Input</h4>
                     </div>
-                    <p className="mt-1 text-[11px] text-neutral-500">
+                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                       Already have a Google Cloud Code OAuth refresh token (<code className="font-mono text-[10px]">1//...</code>)? Paste it here directly.
                     </p>
                     <div className="mt-2.5">
@@ -1617,7 +1617,7 @@ export default function GoRouteDashboard() {
                         placeholder="1//0g..."
                         value={addRefreshToken}
                         onChange={e => setAddRefreshToken(e.target.value)}
-                        className="w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                       />
                     </div>
                   </div>
@@ -1626,15 +1626,15 @@ export default function GoRouteDashboard() {
 
               {selectedTemplate.type === 'kiro' && (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-blue-500/30 bg-blue-50/50 p-4 dark:border-blue-500/20 dark:bg-blue-950/30">
+                  <div className="rounded-2xl border border-blue-500/30 border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200/50 p-4 dark:border-blue-500/20 dark:bg-blue-950/30">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">1</span>
-                          <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import Local AWS Q Kiro (CLI & SSO)</h4>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 hover:bg-rose-700 text-[10px] font-bold text-white">1</span>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import Local AWS Q Kiro (CLI & SSO)</h4>
                           <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
                         </div>
-                        <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
                           Discovers local Kiro CLI tokens from <code className="font-mono text-[10px]">data.sqlite3</code> and AWS SSO cached tokens (<code className="font-mono text-[10px]">~/.aws/sso/cache/</code>).
                         </p>
                       </div>
@@ -1646,7 +1646,7 @@ export default function GoRouteDashboard() {
                           const ok = await handleImportLocalProvider('kiro');
                           if (ok) setShowAddModal(false);
                         }}
-                        className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 transition active:scale-95"
+                        className="flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20  transition active:scale-95"
                       >
                         <Zap className="h-3.5 w-3.5" />
                         <span>Import Local Kiro Credentials</span>
@@ -1660,10 +1660,10 @@ export default function GoRouteDashboard() {
                 <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50/50 p-4 dark:border-emerald-500/20 dark:bg-emerald-950/30">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">1</span>
-                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import OpenAI Codex CLI Session</h4>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import OpenAI Codex CLI Session</h4>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
                   </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
                     Extracts logged-in OAuth session tokens from Codex CLI config (<code className="font-mono text-[10px]">~/.config/codex/credentials.json</code>).
                   </p>
                   <div className="mt-3.5">
@@ -1686,10 +1686,10 @@ export default function GoRouteDashboard() {
                 <div className="rounded-2xl border border-sky-500/30 bg-sky-50/50 p-4 dark:border-sky-500/20 dark:bg-sky-950/30">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-[10px] font-bold text-white">1</span>
-                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import Local Cursor Session</h4>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import Local Cursor Session</h4>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
                   </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
                     Reads local Cursor editor authentication state from SQLite storage.
                   </p>
                   <div className="mt-3.5">
@@ -1709,13 +1709,13 @@ export default function GoRouteDashboard() {
               )}
 
               {selectedTemplate.type === 'copilot' && (
-                <div className="rounded-2xl border border-neutral-500/30 bg-neutral-50/50 p-4 dark:border-neutral-500/20 dark:bg-neutral-900/40">
+                <div className="rounded-2xl border border-neutral-500/30 bg-slate-50 dark:bg-slate-800/40 p-4 dark:border-neutral-500/20 dark:bg-slate-900/40">
                   <div className="flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-[10px] font-bold text-white">1</span>
-                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import GitHub Copilot CLI Token</h4>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import GitHub Copilot CLI Token</h4>
                     <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
                   </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
                     Reads GitHub Copilot tokens from local gh CLI or hosts authentication config.
                   </p>
                   <div className="mt-3.5">
@@ -1735,10 +1735,10 @@ export default function GoRouteDashboard() {
               )}
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4 dark:border-slate-800">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="rounded-xl px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-neutral-800"
               >
                 Cancel
               </button>
@@ -1780,31 +1780,31 @@ export default function GoRouteDashboard() {
       {showNewComboModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="liquid-card w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 dark:border-slate-800">
               <h3 className="text-base font-semibold tracking-tight">Visual Combos Waterfall Builder</h3>
-              <button onClick={() => setShowNewComboModal(false)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+              <button onClick={() => setShowNewComboModal(false)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:text-slate-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="mt-4 space-y-4">
               <div>
-                <label className="text-xs text-neutral-500">Combo Name</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Combo Name</label>
                 <input
                   type="text"
                   placeholder="e.g. claude-resilient, fast-tier"
                   value={newComboName}
                   onChange={e => setNewComboName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 />
               </div>
 
               <div>
-                <label className="text-xs text-neutral-500">Cascade Strategy</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Cascade Strategy</label>
                 <select
                   value={newComboStrategy}
                   onChange={e => setNewComboStrategy(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 >
                   <option value="failover">Failover (Try 1st, cascade on 429/500/timeout)</option>
                   <option value="lowest_latency">Lowest Latency (Race fastest response)</option>
@@ -1814,10 +1814,10 @@ export default function GoRouteDashboard() {
 
               <div>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs text-neutral-500">Waterfall Sequence Steps:</label>
+                  <label className="text-xs text-slate-500 dark:text-slate-400">Waterfall Sequence Steps:</label>
                   <button
                     onClick={() => setComboSteps([...comboSteps, { provider: 'antigravity', model: 'claude-sonnet-4-6' }])}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
+                    className="flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline"
                   >
                     <Plus className="h-3 w-3" /> Add Step
                   </button>
@@ -1826,7 +1826,7 @@ export default function GoRouteDashboard() {
                 <div className="mt-2 space-y-2">
                   {comboSteps.map((step, idx) => (
                     <div key={idx} className="flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold dark:bg-neutral-700">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold dark:bg-slate-700">
                         {idx + 1}
                       </span>
                       <select
@@ -1836,7 +1836,7 @@ export default function GoRouteDashboard() {
                           updated[idx].provider = e.target.value;
                           setComboSteps(updated);
                         }}
-                        className="rounded-xl border border-black/[0.06] bg-white p-2 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                        className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                       >
                         {providers.map(p => (
                           <option key={p.id} value={p.id}>{p.id}</option>
@@ -1851,12 +1851,12 @@ export default function GoRouteDashboard() {
                           updated[idx].model = e.target.value;
                           setComboSteps(updated);
                         }}
-                        className="flex-1 rounded-xl border border-black/[0.06] bg-white p-2 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                       />
                       {comboSteps.length > 1 && (
                         <button
                           onClick={() => setComboSteps(comboSteps.filter((_, i) => i !== idx))}
-                          className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                          className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1867,10 +1867,10 @@ export default function GoRouteDashboard() {
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4 dark:border-slate-800">
               <button
                 onClick={() => setShowNewComboModal(false)}
-                className="rounded-xl px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-neutral-800"
               >
                 Cancel
               </button>
@@ -1908,40 +1908,40 @@ export default function GoRouteDashboard() {
       {showAliasModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
           <div className="liquid-card w-full max-w-md p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 dark:border-slate-800">
               <h3 className="text-base font-semibold tracking-tight">Create Model Alias</h3>
-              <button onClick={() => setShowAliasModal(false)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+              <button onClick={() => setShowAliasModal(false)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:text-slate-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="mt-4 space-y-3.5">
               <div>
-                <label className="text-xs text-neutral-500">Alias Key (Incoming Name)</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Alias Key (Incoming Name)</label>
                 <input
                   type="text"
                   placeholder="e.g. claude-3-7-sonnet"
                   value={newAliasKey}
                   onChange={e => setNewAliasKey(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 />
               </div>
               <div>
-                <label className="text-xs text-neutral-500">Target Model / Combo</label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">Target Model / Combo</label>
                 <input
                   type="text"
                   placeholder="e.g. claude-sonnet-4-6 or claude"
                   value={newAliasTarget}
                   onChange={e => setNewAliasTarget(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                 />
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4 dark:border-slate-800">
               <button
                 onClick={() => setShowAliasModal(false)}
-                className="rounded-xl px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-neutral-800"
               >
                 Cancel
               </button>
@@ -1975,52 +1975,52 @@ export default function GoRouteDashboard() {
       {inspectingLog && (
         <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/30 backdrop-blur-xs">
           <div className="liquid-card h-full w-full max-w-xl overflow-y-auto p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 dark:border-slate-800">
               <div>
                 <h3 className="text-base font-semibold tracking-tight">Request Telemetry Inspector</h3>
-                <span className="font-mono text-xs text-neutral-400">{inspectingLog.id || 'Request Details'}</span>
+                <span className="font-mono text-xs text-slate-400 dark:text-slate-500">{inspectingLog.id || 'Request Details'}</span>
               </div>
-              <button onClick={() => setInspectingLog(null)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+              <button onClick={() => setInspectingLog(null)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:text-slate-400">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="mt-5 space-y-4 font-mono text-xs">
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
-                  <span className="text-[10px] text-neutral-400">Target Model:</span>
-                  <div className="font-semibold text-neutral-900 dark:text-white">{inspectingLog.model}</div>
+                <div className="rounded-xl bg-slate-100/80 dark:bg-slate-800/60 p-3 dark:bg-slate-800/70">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Target Model:</span>
+                  <div className="font-semibold text-slate-900 dark:text-white">{inspectingLog.model}</div>
                 </div>
-                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
-                  <span className="text-[10px] text-neutral-400">Status Code:</span>
+                <div className="rounded-xl bg-slate-100/80 dark:bg-slate-800/60 p-3 dark:bg-slate-800/70">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Status Code:</span>
                   <div className={`font-semibold ${inspectingLog.status_code >= 400 ? 'text-red-600' : 'text-emerald-600'}`}>
                     {inspectingLog.status_code || 200} OK
                   </div>
                 </div>
-                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
-                  <span className="text-[10px] text-neutral-400">Latency:</span>
-                  <div className="font-semibold text-neutral-900 dark:text-white">{inspectingLog.latency_ms || inspectingLog.duration_ms || 230} ms</div>
+                <div className="rounded-xl bg-slate-100/80 dark:bg-slate-800/60 p-3 dark:bg-slate-800/70">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Latency:</span>
+                  <div className="font-semibold text-slate-900 dark:text-white">{inspectingLog.latency_ms || inspectingLog.duration_ms || 230} ms</div>
                 </div>
-                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
-                  <span className="text-[10px] text-neutral-400">Tokens:</span>
-                  <div className="font-semibold text-neutral-900 dark:text-white">{inspectingLog.tokens || 14} tokens</div>
+                <div className="rounded-xl bg-slate-100/80 dark:bg-slate-800/60 p-3 dark:bg-slate-800/70">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Tokens:</span>
+                  <div className="font-semibold text-slate-900 dark:text-white">{inspectingLog.tokens || 14} tokens</div>
                 </div>
               </div>
 
               <div>
-                <span className="text-[10px] text-neutral-400 uppercase tracking-wider">Timestamp:</span>
-                <div className="mt-1 text-neutral-700 dark:text-neutral-300">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider">Timestamp:</span>
+                <div className="mt-1 text-slate-700 dark:text-slate-300">
                   {new Date(inspectingLog.created_at || inspectingLog.timestamp || Date.now()).toISOString()}
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+              <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4 dark:border-slate-800">
                 <button
                   onClick={() => {
                     handleReplayLog(inspectingLog.id);
                     setInspectingLog(null);
                   }}
-                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 font-sans text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                  className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 font-sans text-xs font-semibold text-white shadow-md shadow-blue-500/20 "
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span>Replay This Request</span>
