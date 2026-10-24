@@ -4541,14 +4541,28 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 		if cooldownMap[p.ID] {
 			status = "cooldown"
 		}
+		accList := make([]map[string]interface{}, 0, len(p.Accounts))
+		for _, a := range p.Accounts {
+			accList = append(accList, map[string]interface{}{
+				"id":         a.ID,
+				"pool":       a.Pool,
+				"disabled":   a.Disabled,
+				"email":      a.Email,
+				"project_id": a.ProjectID,
+				"weight":     a.Weight,
+				"has_token":  a.RefreshToken != "" || a.APIKey != "",
+			})
+		}
 		nodes = append(nodes, Node{
 			ID:     p.ID,
 			Label:  p.ID,
 			Type:   "provider",
 			Status: status,
 			Details: map[string]interface{}{
-				"type":     p.Type,
-				"accounts": len(p.Accounts),
+				"type":           p.Type,
+				"accounts_count": len(p.Accounts),
+				"accounts":       accList,
+				"base_url":       p.BaseURL,
 			},
 		})
 		links = append(links, Link{

@@ -30,28 +30,78 @@ import {
   Flame,
   Check,
   ChevronRight,
+  ChevronDown,
   Filter,
   Copy,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Settings,
+  X,
+  SlidersHorizontal,
+  Download,
+  Power
 } from 'lucide-react';
+
+interface Account {
+  id: string;
+  pool?: string;
+  email?: string;
+  project_id?: string;
+  disabled?: boolean;
+  weight?: number;
+  has_token?: boolean;
+}
+
+interface Provider {
+  id: string;
+  label: string;
+  type: string;
+  status: string;
+  details?: {
+    type: string;
+    accounts_count?: number;
+    accounts?: Account[];
+    base_url?: string;
+  };
+}
+
+const PROVIDER_TEMPLATES = [
+  { id: 'anthropic', name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', type: 'anthropic', icon: '🧠', hint: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet' },
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', type: 'openai', icon: '🤖', hint: 'GPT-4o, o3-mini, o1' },
+  { id: 'gemini', name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', type: 'openai', icon: '✨', hint: 'Gemini 2.5 Flash, Gemini 2.0 Pro' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', type: 'openai', icon: '🐳', hint: 'DeepSeek V3, DeepSeek R1' },
+  { id: 'groq', name: 'Groq LPU', baseUrl: 'https://api.groq.com/openai/v1', type: 'openai', icon: '⚡', hint: 'Ultra-fast Llama 3.3 70B, Mixtral' },
+  { id: 'xai', name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1', type: 'openai', icon: '🌌', hint: 'Grok 2, Grok 3, Grok Build' },
+  { id: 'mistral', name: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', type: 'openai', icon: '🌪️', hint: 'Mistral Large 2, Codestral' },
+  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', type: 'openai', icon: '🌐', hint: 'Universal LLM aggregator with 200+ models' },
+  { id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', type: 'openai', icon: '💻', hint: 'Wafer-scale high throughput inference' },
+  { id: 'ollama', name: 'Ollama (Local)', baseUrl: 'http://localhost:11434/v1', type: 'openai', icon: '🦙', hint: 'Local offline LLMs (Llama, Qwen, DeepSeek)' },
+  { id: 'kiro', name: 'AWS Q (Kiro)', baseUrl: 'https://codewhisperer.us-east-1.amazonaws.com', type: 'kiro', icon: '☁️', hint: 'AWS Q Developer device OAuth pool' },
+  { id: 'antigravity', name: 'Google Cloud Code', baseUrl: '', type: 'antigravity', icon: '⚡', hint: 'Google Cloud Code OAuth multi-account pool' },
+  { id: 'codex', name: 'OpenAI Codex CLI', baseUrl: '', type: 'codex', icon: '🖥️', hint: 'OpenAI Codex CLI session token' },
+  { id: 'custom-openai', name: 'Custom OpenAI Compatible', baseUrl: '', type: 'openai', icon: '🔌', hint: 'Any custom endpoint (vLLM, LM Studio, etc.)' },
+];
 
 export default function GoRouteDashboard() {
   const [darkMode, setDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'providers' | 'combos' | 'catalog' | 'quota' | 'traffic' | 'fleet' | 'playground'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'providers' | 'combos' | 'catalog' | 'quota' | 'traffic' | 'fleet' | 'settings' | 'playground'>('overview');
   
   // Data state
   const [topology, setTopology] = useState<any>(null);
-  const [providers, setProviders] = useState<any[]>([]);
+  const [providers, setProviders] = useState<Provider[]>([]);
   const [combos, setCombos] = useState<any[]>([]);
   const [quotas, setQuotas] = useState<any>(null);
   const [trafficLogs, setTrafficLogs] = useState<any[]>([]);
   const [fleet, setFleet] = useState<any[]>([]);
   const [cliAgents, setCliAgents] = useState<any[]>([]);
   const [catalog, setCatalog] = useState<any[]>([]);
+  const [aliases, setAliases] = useState<Record<string, string>>({});
+  const [thinkingBudget, setThinkingBudget] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [catalogFilterProvider, setCatalogFilterProvider] = useState('all');
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  const [inspectingLog, setInspectingLog] = useState<any | null>(null);
   
   // Playground state
   const [playgroundModel, setPlaygroundModel] = useState('claude-3-7-sonnet');
@@ -60,17 +110,28 @@ export default function GoRouteDashboard() {
   const [playgroundLoading, setPlaygroundLoading] = useState(false);
   const [playgroundMeta, setPlaygroundMeta] = useState<any>(null);
 
-  // Modal state
+  // Add Provider Modal State
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addProviderType, setAddProviderType] = useState('openai');
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(PROVIDER_TEMPLATES[0]);
   const [addProvId, setAddProvId] = useState('');
   const [addBaseUrl, setAddBaseUrl] = useState('');
   const [addApiKey, setAddApiKey] = useState('');
   const [addRefreshToken, setAddRefreshToken] = useState('');
+
+  // Combos Builder Modal State
   const [showNewComboModal, setShowNewComboModal] = useState(false);
   const [newComboName, setNewComboName] = useState('');
   const [newComboStrategy, setNewComboStrategy] = useState('failover');
-  const [newComboTargets, setNewComboTargets] = useState('');
+  const [comboSteps, setComboSteps] = useState<{ provider: string; model: string }[]>([
+    { provider: 'antigravity', model: 'claude-sonnet-4-6' },
+    { provider: 'kiro', model: 'claude-sonnet-4.5' }
+  ]);
+
+  // Model Alias Modal State
+  const [showAliasModal, setShowAliasModal] = useState(false);
+  const [newAliasKey, setNewAliasKey] = useState('');
+  const [newAliasTarget, setNewAliasTarget] = useState('');
+
   const [toastMsg, setToastMsg] = useState('');
 
   const showToast = (msg: string) => {
@@ -81,7 +142,7 @@ export default function GoRouteDashboard() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [topoRes, combosRes, quotaRes, fleetRes, cliRes, catRes, logsRes] = await Promise.all([
+      const [topoRes, combosRes, quotaRes, fleetRes, cliRes, catRes, logsRes, aliasRes, budgetRes] = await Promise.all([
         fetch('/api/topology').then(r => r.json()).catch(() => ({})),
         fetch('/api/combos').then(r => r.json()).catch(() => ({ combos: [] })),
         fetch('/api/usage/quota').then(r => r.json()).catch(() => ({})),
@@ -89,6 +150,8 @@ export default function GoRouteDashboard() {
         fetch('/api/cli-agents').then(r => r.json()).catch(() => ({ tools: [] })),
         fetch('/api/radar/catalog').then(r => r.json()).catch(() => ({ entries: [] })),
         fetch('/api/usage/call-logs?limit=40').then(r => r.json()).catch(() => ({ logs: [] })),
+        fetch('/api/settings/model-aliases').then(r => r.json()).catch(() => ({ aliases: {} })),
+        fetch('/api/settings/thinking-budget').then(r => r.json()).catch(() => ({ budget: 0 })),
       ]);
 
       setTopology(topoRes);
@@ -101,6 +164,8 @@ export default function GoRouteDashboard() {
       setCliAgents(cliRes.tools || []);
       setCatalog(catRes.entries || []);
       setTrafficLogs(logsRes.logs || []);
+      setAliases(aliasRes.aliases || {});
+      setThinkingBudget(budgetRes.budget || 0);
     } catch (e: any) {
       console.error('Error fetching GoRoute data:', e);
     } finally {
@@ -129,6 +194,71 @@ export default function GoRouteDashboard() {
       fetchAllData();
     } catch (e: any) {
       showToast(`❌ Test error: ${e.message}`);
+    }
+  };
+
+  const handleToggleAccount = async (providerId: string, accountId: string) => {
+    try {
+      const res = await fetch(`/api/providers/${providerId}/accounts/${accountId}/toggle`, { method: 'POST' }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast(`Account ${accountId} is now ${res.disabled ? 'Disabled' : 'Active'}`);
+        fetchAllData();
+      }
+    } catch (e: any) {
+      showToast(`Toggle failed: ${e.message}`);
+    }
+  };
+
+  const handleDeleteAccount = async (providerId: string, accountId: string) => {
+    if (!confirm(`Are you sure you want to delete account ${accountId}?`)) return;
+    try {
+      const res = await fetch(`/api/providers/${providerId}/accounts/${accountId}`, { method: 'DELETE' }).then(r => r.json());
+      if (res.status === 'ok' || res.ok) {
+        showToast(`✅ Account ${accountId} deleted`);
+        fetchAllData();
+      }
+    } catch (e: any) {
+      showToast(`Delete failed: ${e.message}`);
+    }
+  };
+
+  const handleDeleteCombo = async (comboName: string) => {
+    if (!confirm(`Are you sure you want to delete combo ${comboName}?`)) return;
+    try {
+      const res = await fetch(`/api/combos/${comboName}`, { method: 'DELETE' }).then(r => r.json());
+      if (res.status === 'ok' || res.ok) {
+        showToast(`✅ Combo ${comboName} deleted`);
+        fetchAllData();
+      }
+    } catch (e: any) {
+      showToast(`Delete failed: ${e.message}`);
+    }
+  };
+
+  const handleSyncFromOmniRoute = async () => {
+    showToast('🔄 Synchronizing all accounts and credentials from OmniRoute...');
+    try {
+      const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast(`✅ Synced! Imported ${res.result?.accounts_imported || 0} accounts, ${res.result?.combos_imported || 0} combos`);
+        fetchAllData();
+      } else {
+        showToast(`❌ Sync error: ${res.error || 'Failed'}`);
+      }
+    } catch (e: any) {
+      showToast(`❌ Sync error: ${e.message}`);
+    }
+  };
+
+  const handleResetCooldowns = async () => {
+    try {
+      const res = await fetch('/api/resilience/reset', { method: 'POST' }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast('✅ All model and provider cooldowns reset to healthy!');
+        fetchAllData();
+      }
+    } catch (e: any) {
+      showToast(`Reset error: ${e.message}`);
     }
   };
 
@@ -203,7 +333,7 @@ export default function GoRouteDashboard() {
   const gatewayMem = topology?.nodes?.find((n: any) => n.type === 'gateway')?.details?.memory || '3.7 MB';
   const gatewayUptime = topology?.nodes?.find((n: any) => n.type === 'gateway')?.details?.uptime || 'Active';
 
-  // Catalog filtered entries
+  // Filtered catalog
   const filteredCatalog = useMemo(() => {
     return catalog.filter(item => {
       const matchQuery = !searchQuery ||
@@ -258,7 +388,7 @@ export default function GoRouteDashboard() {
               <span className="h-3 w-px bg-neutral-300 dark:bg-neutral-700" />
               <span>RAM: <strong>{gatewayMem}</strong></span>
               <span className="h-3 w-px bg-neutral-300 dark:bg-neutral-700" />
-              <span>Latency: <strong className="text-emerald-600 dark:text-emerald-400">0.86ms</strong></span>
+              <span>Routing: <strong className="text-emerald-600 dark:text-emerald-400">0.86ms</strong></span>
             </div>
 
             {/* Dark/Light Switch */}
@@ -280,9 +410,14 @@ export default function GoRouteDashboard() {
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-blue-500' : ''}`} />
             </button>
 
-            {/* Add Account Modal Trigger */}
+            {/* Add Provider Modal Trigger */}
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => {
+                setSelectedTemplate(PROVIDER_TEMPLATES[0]);
+                setAddProvId('anthropic');
+                setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
+                setShowAddModal(true);
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -306,6 +441,7 @@ export default function GoRouteDashboard() {
               { id: 'quota', label: 'Rolling Quota', icon: Shield },
               { id: 'traffic', label: 'Traffic Inspector', icon: Radio, badge: trafficLogs.length },
               { id: 'fleet', label: 'Agent Fleet', icon: Terminal, badge: cliAgents.filter(a => a.detected).length },
+              { id: 'settings', label: 'Settings', icon: Settings },
               { id: 'playground', label: 'Playground', icon: Play },
             ].map(tab => {
               const Icon = tab.icon;
@@ -348,7 +484,6 @@ export default function GoRouteDashboard() {
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* Bento Grid Top Metrics */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="liquid-card p-5">
                 <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
@@ -360,18 +495,18 @@ export default function GoRouteDashboard() {
                 <div className="mt-2 text-2xl font-bold tracking-tight">Go + Rust SIMD</div>
                 <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
                   <span className="pulse-indicator" />
-                  <span>3.7 MB RSS • 0.86ms latency</span>
+                  <span>{gatewayMem} RSS • 0.86ms latency</span>
                 </div>
               </div>
 
               <div className="liquid-card p-5">
                 <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
                   <span>Upstream Providers</span>
-                  <span className="font-mono text-[11px] text-blue-500">Live Pool</span>
+                  <span className="font-mono text-[11px] text-blue-500">Active Pools</span>
                 </div>
                 <div className="mt-2 text-2xl font-bold tracking-tight">{providers.length} Active</div>
                 <div className="mt-1 text-xs text-neutral-500">
-                  Antigravity, Kiro, Codex, Apinex, Groq
+                  Antigravity (4 accts), Kiro, Codex, Apinex, Groq
                 </div>
               </div>
 
@@ -398,19 +533,19 @@ export default function GoRouteDashboard() {
               </div>
             </div>
 
-            {/* Asymmetric Middle: Topology Flow + Quick Connect */}
+            {/* Middle Section: Topology & Quick Actions */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="liquid-card col-span-2 p-6">
                 <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
                   <div>
-                    <h3 className="font-semibold tracking-tight">Real-Time Routing Topology</h3>
-                    <p className="text-xs text-neutral-500">High-throughput proxy layer dispatching to resilient upstream accounts</p>
+                    <h3 className="font-semibold tracking-tight">Active Failover Cascades</h3>
+                    <p className="text-xs text-neutral-500">Resilient routing sequences across pools</p>
                   </div>
                   <button
                     onClick={() => setActiveTab('combos')}
                     className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
                   >
-                    <span>Manage Combos</span>
+                    <span>Combos Studio</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -496,74 +631,167 @@ export default function GoRouteDashboard() {
           </div>
         )}
 
-        {/* TAB: PROVIDERS */}
+        {/* TAB: PROVIDERS & MULTI-ACCOUNT MANAGER */}
         {activeTab === 'providers' && (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold tracking-tight">Active Upstream Providers</h2>
-                <p className="text-xs text-neutral-500">Autonomous connections with active connection pooling and health checks</p>
+                <h2 className="text-base font-semibold tracking-tight">Upstream Providers & Account Pools</h2>
+                <p className="text-xs text-neutral-500">Granular account pooling, individual health checks, and priority failover</p>
               </div>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Add Upstream Provider</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSyncFromOmniRoute}
+                  className="flex items-center gap-1.5 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 shadow-xs hover:bg-neutral-50 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-200"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 text-blue-500" />
+                  <span>Sync from OmniRoute</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedTemplate(PROVIDER_TEMPLATES[0]);
+                    setAddProvId('anthropic');
+                    setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
+                    setShowAddModal(true);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Upstream Provider</span>
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-4">
               {providers
                 .filter(p => !searchQuery || p.id.toLowerCase().includes(searchQuery.toLowerCase()))
                 .map(p => {
-                  const accCount = p.details?.accounts || 1;
+                  const accCount = p.details?.accounts_count ?? p.details?.accounts?.length ?? 1;
+                  const accounts = p.details?.accounts || [];
+                  const isExpanded = expandedProvider === p.id;
                   const pType = p.details?.type || 'openai';
+
                   return (
-                    <div key={p.id} className="liquid-card flex flex-col justify-between p-5">
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-xl">
-                              {p.id.includes('antigravity') ? '⚡' : p.id.includes('kiro') ? '☁️' : p.id.includes('codex') ? '💻' : '🤖'}
-                            </span>
-                            <div>
+                    <div key={p.id} className="liquid-card overflow-hidden">
+                      <div className="flex flex-wrap items-center justify-between gap-4 p-5">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">
+                            {p.id.includes('antigravity') ? '⚡' : p.id.includes('kiro') ? '☁️' : p.id.includes('codex') ? '💻' : p.id.includes('deepseek') ? '🐳' : '🤖'}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
                               <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">{p.id}</h3>
-                              <span className="font-mono text-[11px] text-neutral-400">{pType} protocol</span>
+                              <span className="rounded-md bg-neutral-100 px-2 py-0.5 font-mono text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                                {pType}
+                              </span>
                             </div>
+                            <span className="text-xs text-neutral-400">
+                              {p.details?.base_url || 'Internal OAuth Token Provider'}
+                            </span>
                           </div>
-                          <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                            <span className="pulse-indicator" /> Active
-                          </span>
                         </div>
 
-                        <div className="mt-4 flex items-center justify-between border-t border-black/[0.04] pt-3 text-xs text-neutral-500 dark:border-white/[0.04]">
-                          <span>Connection Pool</span>
-                          <span className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">
-                            {accCount} account{accCount > 1 ? 's' : ''}
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                            <span className="pulse-indicator" /> {accCount} Account{accCount !== 1 ? 's' : ''} in Pool
                           </span>
+
+                          <button
+                            onClick={() => handleTestPing(p.id)}
+                            className="flex items-center gap-1 rounded-xl border border-black/[0.06] bg-neutral-100/80 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-200 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-300"
+                          >
+                            <Zap className="h-3 w-3 text-amber-500" />
+                            <span>Test Ping</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setPlaygroundModel(p.id === 'kiro' ? 'kiro/claude-sonnet-4.5' : p.id === 'antigravity' ? 'antigravity/claude-sonnet-4-6' : `${p.id}/default`);
+                              setActiveTab('playground');
+                            }}
+                            className="flex items-center gap-1 rounded-xl bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
+                          >
+                            <Play className="h-3 w-3" />
+                            <span>Playground</span>
+                          </button>
+
+                          <button
+                            onClick={() => setExpandedProvider(isExpanded ? null : p.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-xl border border-black/[0.06] text-neutral-500 hover:bg-neutral-100 dark:border-white/[0.08] dark:hover:bg-neutral-800"
+                          >
+                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="mt-5 flex items-center gap-2">
-                        <button
-                          onClick={() => handleTestPing(p.id)}
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-black/[0.06] bg-neutral-100/80 py-2 text-xs font-medium text-neutral-700 transition hover:bg-neutral-200 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                        >
-                          <Zap className="h-3 w-3 text-amber-500" />
-                          <span>Test Ping</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setPlaygroundModel(p.id === 'kiro' ? 'kiro/claude-sonnet-4.5' : p.id === 'antigravity' ? 'antigravity/claude-sonnet-4-6' : `${p.id}/default`);
-                            setActiveTab('playground');
-                          }}
-                          className="flex items-center justify-center rounded-xl bg-blue-50 px-3 py-2 text-xs font-medium text-blue-600 transition hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400"
-                          title="Open in Playground"
-                        >
-                          <Play className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {/* Expandable Account Pool Drawer */}
+                      {isExpanded && (
+                        <div className="border-t border-black/[0.04] bg-neutral-50/50 p-5 dark:border-white/[0.04] dark:bg-black/20">
+                          <div className="mb-3 flex items-center justify-between text-xs text-neutral-500">
+                            <span className="font-semibold uppercase tracking-wider text-neutral-400 text-[10px]">
+                              Connection Pool Accounts ({accounts.length})
+                            </span>
+                            <span>Strategy: Priority Failover with Auto-Cooldown</span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {accounts.map((acc, idx) => (
+                              <div
+                                key={acc.id}
+                                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-xs transition ${
+                                  acc.disabled
+                                    ? 'border-neutral-200 bg-neutral-100/50 text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900/40'
+                                    : 'border-black/[0.04] bg-white dark:border-white/[0.04] dark:bg-neutral-800/80'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 font-mono">
+                                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300">
+                                    {idx + 1}
+                                  </span>
+                                  <div>
+                                    <div className="font-semibold text-neutral-900 dark:text-white">{acc.id}</div>
+                                    <div className="text-[10px] text-neutral-400">
+                                      Pool: {acc.pool || 'pool1'} {acc.project_id ? `• Project: ${acc.project_id}` : ''}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleTestPing(p.id, acc.id)}
+                                    className="rounded-lg border border-black/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-neutral-100 dark:border-white/[0.08] dark:hover:bg-neutral-700"
+                                  >
+                                    Ping
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleAccount(p.id, acc.id)}
+                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
+                                      acc.disabled
+                                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                    }`}
+                                  >
+                                    {acc.disabled ? 'Disabled' : 'Active'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteAccount(p.id, acc.id)}
+                                    className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                                    title="Delete Account"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+
+                            {accounts.length === 0 && (
+                              <div className="rounded-xl border border-dashed border-neutral-300 p-4 text-center text-xs text-neutral-400 dark:border-neutral-700">
+                                No individual account objects mapped. Uses root provider credentials.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -577,7 +805,7 @@ export default function GoRouteDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Combos Studio & Failover Cascades</h2>
-                <p className="text-xs text-neutral-500">Autonomous failover chains across multiple upstream AI accounts</p>
+                <p className="text-xs text-neutral-500">Autonomous waterfall failover chains across multiple upstream AI accounts</p>
               </div>
               <button
                 onClick={() => setShowNewComboModal(true)}
@@ -604,9 +832,18 @@ export default function GoRouteDashboard() {
                           <span className="text-[11px] text-neutral-400">{strategy} strategy</span>
                         </div>
                       </div>
-                      <span className="rounded-full bg-purple-50 px-2 py-0.5 font-mono text-[11px] font-medium text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
-                        {targets.length} targets
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-purple-50 px-2 py-0.5 font-mono text-[11px] font-medium text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
+                          {targets.length} targets
+                        </span>
+                        <button
+                          onClick={() => handleDeleteCombo(c.name)}
+                          className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                          title="Delete Combo"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-4 space-y-2 rounded-xl bg-neutral-100/70 p-3 font-mono text-xs dark:bg-neutral-800/70">
@@ -656,7 +893,7 @@ export default function GoRouteDashboard() {
 
               {/* Provider Filter Tabs */}
               <div className="flex flex-wrap gap-1 rounded-xl bg-neutral-200/50 p-1 text-xs dark:bg-neutral-800/50">
-                {['all', 'antigravity', 'kiro', 'codex', 'openai-compatible'].map(prov => (
+                {['all', 'antigravity', 'kiro', 'codex', 'openai-compatible', 'agentrouter'].map(prov => (
                   <button
                     key={prov}
                     onClick={() => setCatalogFilterProvider(prov)}
@@ -712,13 +949,6 @@ export default function GoRouteDashboard() {
                         </td>
                       </tr>
                     ))}
-                    {filteredCatalog.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-neutral-400">
-                          No models found matching criteria.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -791,13 +1021,13 @@ export default function GoRouteDashboard() {
           </div>
         )}
 
-        {/* TAB: TRAFFIC INSPECTOR */}
+        {/* TAB: TRAFFIC INSPECTOR WITH LOG DRAWER */}
         {activeTab === 'traffic' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold tracking-tight">Real-Time Traffic Stream</h2>
-                <p className="text-xs text-neutral-500">Live requests passing through GoRoute with one-click replay</p>
+                <p className="text-xs text-neutral-500">Click any request row to inspect full headers, tokens, and response payloads</p>
               </div>
             </div>
 
@@ -816,7 +1046,11 @@ export default function GoRouteDashboard() {
                   </thead>
                   <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
                     {trafficLogs.slice(0, 20).map((log, i) => (
-                      <tr key={i} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
+                      <tr
+                        key={i}
+                        onClick={() => setInspectingLog(log)}
+                        className="cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                      >
                         <td className="p-3.5 font-mono font-semibold text-neutral-800 dark:text-neutral-200">{log.model}</td>
                         <td className="p-3.5 font-mono text-neutral-500">{log.tokens || log.prompt_tokens || '14'} tok</td>
                         <td className="p-3.5 font-mono text-neutral-500">{log.latency_ms || log.duration_ms || 230}ms</td>
@@ -830,7 +1064,10 @@ export default function GoRouteDashboard() {
                         <td className="p-3.5 text-neutral-400">{new Date(log.created_at || log.timestamp || Date.now()).toLocaleTimeString()}</td>
                         <td className="p-3.5 text-right">
                           <button
-                            onClick={() => handleReplayLog(log.id || `req_${i}`)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReplayLog(log.id || `req_${i}`);
+                            }}
                             className="flex items-center gap-1 rounded-lg border border-black/[0.06] px-2.5 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100 dark:border-white/[0.08] dark:text-neutral-300 dark:hover:bg-neutral-800"
                           >
                             <RotateCcw className="h-3 w-3" /> Replay
@@ -838,13 +1075,6 @@ export default function GoRouteDashboard() {
                         </td>
                       </tr>
                     ))}
-                    {trafficLogs.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-neutral-400">
-                          No requests recorded yet. Run a prompt in the Playground!
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -921,6 +1151,145 @@ export default function GoRouteDashboard() {
           </div>
         )}
 
+        {/* TAB: SETTINGS & RESILIENCY HUB */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold tracking-tight">Gateway Settings & Resiliency Hub</h2>
+                <p className="text-xs text-neutral-500">Configure global model aliases, thinking token budgets, proactive refresh, and database backups</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* OmniRoute Sync & Cooldown Actions */}
+              <div className="liquid-card p-6">
+                <h3 className="text-sm font-semibold tracking-tight">OmniRoute Synchronization</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Import credentials, OAuth accounts, and combos directly from local OmniRoute storage.sqlite with pure Go AES-256-GCM.
+                </p>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <button
+                    onClick={handleSyncFromOmniRoute}
+                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>Sync All from OmniRoute</span>
+                  </button>
+
+                  <button
+                    onClick={handleResetCooldowns}
+                    className="flex items-center gap-2 rounded-xl border border-black/[0.06] bg-white px-4 py-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-200"
+                  >
+                    <Power className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>Reset All Cooldowns</span>
+                  </button>
+                </div>
+
+                <div className="mt-6 border-t border-black/[0.04] pt-4 dark:border-white/[0.04]">
+                  <h4 className="text-xs font-semibold">Proactive Token Refresh Scheduler</h4>
+                  <p className="text-[11px] text-neutral-400">Refreshes Kiro AWS Q and Antigravity tokens before expiration.</p>
+                  <div className="mt-2 flex items-center gap-2 font-mono text-xs text-emerald-600 dark:text-emerald-400">
+                    <span className="pulse-indicator" /> Running every 3 minutes in background
+                  </div>
+                </div>
+              </div>
+
+              {/* Thinking Budget Slider */}
+              <div className="liquid-card p-6">
+                <h3 className="text-sm font-semibold tracking-tight">Thinking Token Budget</h3>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Control thinking budget tokens for reasoning models (Claude 3.7 Sonnet Thinking, Gemini 2.0 Flash Thinking, DeepSeek R1).
+                </p>
+
+                <div className="mt-6">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-neutral-500">Budget Limit:</span>
+                    <span className="font-mono font-bold">{thinkingBudget > 0 ? `${thinkingBudget} tokens` : 'Pass-through (disabled)'}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="64000"
+                    step="1024"
+                    value={thinkingBudget}
+                    onChange={e => setThinkingBudget(parseInt(e.target.value))}
+                    className="mt-3 w-full"
+                  />
+                  <div className="mt-2 flex justify-between text-[10px] font-mono text-neutral-400">
+                    <span>0 (Passthrough)</span>
+                    <span>16,384</span>
+                    <span>32,768</span>
+                    <span>64,000</span>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/settings/thinking-budget', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ budget: thinkingBudget })
+                        });
+                        if (res.ok) showToast('✅ Thinking budget updated!');
+                      } catch (e: any) {
+                        showToast(`Update error: ${e.message}`);
+                      }
+                    }}
+                    className="mt-4 rounded-xl bg-neutral-900 px-4 py-2 text-xs font-semibold text-white dark:bg-white dark:text-neutral-900"
+                  >
+                    Save Budget
+                  </button>
+                </div>
+              </div>
+
+              {/* Model Aliases Manager */}
+              <div className="liquid-card col-span-full p-6">
+                <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
+                  <div>
+                    <h3 className="text-sm font-semibold tracking-tight">Model Aliases Mapping</h3>
+                    <p className="text-xs text-neutral-500">Map custom names or IDE models to target models or combo cascades</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAliasModal(true)}
+                    className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Add Alias</span>
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.entries(aliases).map(([fromModel, toModel]) => (
+                    <div key={fromModel} className="flex items-center justify-between rounded-xl border border-black/[0.04] p-3 text-xs dark:border-white/[0.04]">
+                      <div>
+                        <div className="font-mono font-semibold text-neutral-900 dark:text-white">{fromModel}</div>
+                        <div className="mt-0.5 font-mono text-[11px] text-neutral-400">→ {toModel}</div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          await fetch(`/api/settings/model-aliases?alias=${fromModel}`, { method: 'DELETE' });
+                          showToast(`Deleted alias ${fromModel}`);
+                          fetchAllData();
+                        }}
+                        className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {Object.keys(aliases).length === 0 && (
+                    <div className="col-span-full rounded-xl border border-dashed border-neutral-300 p-6 text-center text-xs text-neutral-400 dark:border-neutral-700">
+                      No custom model aliases configured. Click 'Add Alias' to create one!
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TAB: PLAYGROUND */}
         {activeTab === 'playground' && (
           <div className="liquid-card grid grid-cols-1 overflow-hidden md:grid-cols-2">
@@ -993,52 +1362,64 @@ export default function GoRouteDashboard() {
         )}
       </main>
 
-      {/* Add Upstream Provider Modal */}
+      {/* COMPREHENSIVE ADD PROVIDER DIRECTORY MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="liquid-card w-full max-w-md p-6 shadow-2xl">
-            <h3 className="text-base font-semibold tracking-tight">Connect Upstream Provider</h3>
-            <p className="mt-1 text-xs text-neutral-500">Configure an API key, OAuth device grant, or custom endpoint</p>
-
-            <div className="mt-4 space-y-3.5">
+          <div className="liquid-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
               <div>
-                <label className="text-xs text-neutral-500">Provider Type</label>
-                <select
-                  value={addProviderType}
-                  onChange={e => {
-                    setAddProviderType(e.target.value);
-                    if (!addProvId) setAddProvId(e.target.value);
-                  }}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
-                >
-                  <option value="openai">OpenAI Compatible (Apinex, Groq, Ollama, DeepSeek)</option>
-                  <option value="kiro">AWS Q Developer (Social OAuth Device Flow)</option>
-                  <option value="antigravity">Google Cloud Code (OAuth Refresh Token)</option>
-                  <option value="codex">OpenAI Codex CLI (Session Token)</option>
-                </select>
+                <h3 className="text-base font-semibold tracking-tight">Connect Upstream Provider</h3>
+                <p className="text-xs text-neutral-500">Select a pre-configured provider or configure a custom endpoint</p>
               </div>
+              <button onClick={() => setShowAddModal(false)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
+            <div className="mt-4">
+              <label className="text-xs font-semibold text-neutral-500">Choose Provider Directory:</label>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 max-h-48 overflow-y-auto p-1">
+                {PROVIDER_TEMPLATES.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setSelectedTemplate(t);
+                      setAddProvId(t.id);
+                      setAddBaseUrl(t.baseUrl);
+                    }}
+                    className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs transition ${
+                      selectedTemplate.id === t.id
+                        ? 'border-blue-500 bg-blue-50/50 font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                        : 'border-black/[0.04] bg-white hover:bg-neutral-50 dark:border-white/[0.04] dark:bg-neutral-800/60'
+                    }`}
+                  >
+                    <span className="text-base">{t.icon}</span>
+                    <span className="truncate">{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3.5 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
               <div>
                 <label className="text-xs text-neutral-500">Provider ID</label>
                 <input
                   type="text"
-                  placeholder="e.g. deepseek, groq, my-ollama"
                   value={addProvId}
                   onChange={e => setAddProvId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
                 />
               </div>
 
-              {addProviderType === 'openai' && (
+              {selectedTemplate.type !== 'kiro' && selectedTemplate.type !== 'antigravity' && selectedTemplate.type !== 'codex' && (
                 <>
                   <div>
                     <label className="text-xs text-neutral-500">Base URL</label>
                     <input
                       type="text"
-                      placeholder="https://api.openai.com/v1"
                       value={addBaseUrl}
                       onChange={e => setAddBaseUrl(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
                     />
                   </div>
                   <div>
@@ -1048,21 +1429,28 @@ export default function GoRouteDashboard() {
                       placeholder="sk-..."
                       value={addApiKey}
                       onChange={e => setAddApiKey(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
                     />
                   </div>
                 </>
               )}
 
-              {addProviderType === 'kiro' && (
+              {selectedTemplate.type === 'kiro' && (
                 <div className="rounded-xl bg-blue-50/60 p-3 text-xs text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                  <p className="font-semibold">⚡ One-Click Device Flow</p>
-                  <p className="mt-1 text-[11px]">Connecting AWS Q Kiro will open your browser to approve the AWS device authorization grant.</p>
+                  <p className="font-semibold">⚡ AWS Q Device Flow Integration</p>
+                  <p className="mt-1 text-[11px]">Connecting AWS Q Kiro will authorize this gateway to receive scoped AWS Q credentials.</p>
+                </div>
+              )}
+
+              {selectedTemplate.type === 'antigravity' && (
+                <div className="rounded-xl bg-purple-50/60 p-3 text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                  <p className="font-semibold">⚡ Google Antigravity OAuth Integration</p>
+                  <p className="mt-1 text-[11px]">Connects Google Cloud Code tokens directly with full multi-account quota pooling.</p>
                 </div>
               )}
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
               <button
                 onClick={() => setShowAddModal(false)}
                 className="rounded-xl px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -1076,8 +1464,8 @@ export default function GoRouteDashboard() {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        id: addProvId || addProviderType,
-                        type: addProviderType,
+                        id: addProvId,
+                        type: selectedTemplate.type,
                         base_url: addBaseUrl,
                         api_key: addApiKey,
                         refresh_token: addRefreshToken
@@ -1088,7 +1476,7 @@ export default function GoRouteDashboard() {
                       setShowAddModal(false);
                       fetchAllData();
                     } else {
-                      showToast(`❌ Add failed`);
+                      showToast(`❌ Connection failed`);
                     }
                   } catch (e: any) {
                     showToast(`❌ Error: ${e.message}`);
@@ -1103,22 +1491,26 @@ export default function GoRouteDashboard() {
         </div>
       )}
 
-      {/* New Combo Modal */}
+      {/* COMBOS VISUAL BUILDER MODAL */}
       {showNewComboModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="liquid-card w-full max-w-md p-6 shadow-2xl">
-            <h3 className="text-base font-semibold tracking-tight">Create Routing Combo</h3>
-            <p className="mt-1 text-xs text-neutral-500">Configure a resilient failover cascade across multiple accounts</p>
+          <div className="liquid-card w-full max-w-lg p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
+              <h3 className="text-base font-semibold tracking-tight">Visual Combos Waterfall Builder</h3>
+              <button onClick={() => setShowNewComboModal(false)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-            <div className="mt-4 space-y-3.5">
+            <div className="mt-4 space-y-4">
               <div>
                 <label className="text-xs text-neutral-500">Combo Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. claude-code-resilient, fast-tier"
+                  placeholder="e.g. claude-resilient, fast-tier"
                   value={newComboName}
                   onChange={e => setNewComboName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
                 />
               </div>
 
@@ -1129,25 +1521,68 @@ export default function GoRouteDashboard() {
                   onChange={e => setNewComboStrategy(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
                 >
-                  <option value="failover">Failover (Try 1st, cascade on 429/500)</option>
+                  <option value="failover">Failover (Try 1st, cascade on 429/500/timeout)</option>
                   <option value="lowest_latency">Lowest Latency (Race fastest response)</option>
-                  <option value="round_robin">Round Robin (Distribute request volume)</option>
+                  <option value="round_robin">Round Robin (Distribute traffic evenly)</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-xs text-neutral-500">Target Models (comma-separated: provider/model)</label>
-                <input
-                  type="text"
-                  placeholder="antigravity/claude-sonnet-4-6, kiro/claude-sonnet-4.5"
-                  value={newComboTargets}
-                  onChange={e => setNewComboTargets(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-neutral-500">Waterfall Sequence Steps:</label>
+                  <button
+                    onClick={() => setComboSteps([...comboSteps, { provider: 'antigravity', model: 'claude-sonnet-4-6' }])}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
+                  >
+                    <Plus className="h-3 w-3" /> Add Step
+                  </button>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {comboSteps.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold dark:bg-neutral-700">
+                        {idx + 1}
+                      </span>
+                      <select
+                        value={step.provider}
+                        onChange={e => {
+                          const updated = [...comboSteps];
+                          updated[idx].provider = e.target.value;
+                          setComboSteps(updated);
+                        }}
+                        className="rounded-xl border border-black/[0.06] bg-white p-2 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      >
+                        {providers.map(p => (
+                          <option key={p.id} value={p.id}>{p.id}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="model identifier"
+                        value={step.model}
+                        onChange={e => {
+                          const updated = [...comboSteps];
+                          updated[idx].model = e.target.value;
+                          setComboSteps(updated);
+                        }}
+                        className="flex-1 rounded-xl border border-black/[0.06] bg-white p-2 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      />
+                      {comboSteps.length > 1 && (
+                        <button
+                          onClick={() => setComboSteps(comboSteps.filter((_, i) => i !== idx))}
+                          className="rounded-lg p-1 text-neutral-400 hover:text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
               <button
                 onClick={() => setShowNewComboModal(false)}
                 className="rounded-xl px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
@@ -1157,35 +1592,155 @@ export default function GoRouteDashboard() {
               <button
                 onClick={async () => {
                   try {
-                    const targets = newComboTargets.split(',').map(s => {
-                      const parts = s.trim().split('/');
-                      return { provider_id: parts[0] || 'antigravity', model: parts[1] || parts[0] };
-                    });
-
                     const res = await fetch('/api/combos', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         name: newComboName,
                         strategy: newComboStrategy,
-                        targets
+                        targets: comboSteps.map(s => ({ provider_id: s.provider, model: s.model }))
                       })
                     });
                     if (res.ok) {
                       showToast(`✅ Combo ${newComboName} created!`);
                       setShowNewComboModal(false);
                       fetchAllData();
-                    } else {
-                      showToast(`❌ Failed to create combo`);
                     }
                   } catch (e: any) {
-                    showToast(`❌ Error: ${e.message}`);
+                    showToast(`Error: ${e.message}`);
                   }
                 }}
                 className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
               >
-                Create Combo
+                Create Waterfall Combo
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODEL ALIAS MODAL */}
+      {showAliasModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="liquid-card w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 dark:border-white/[0.08]">
+              <h3 className="text-base font-semibold tracking-tight">Create Model Alias</h3>
+              <button onClick={() => setShowAliasModal(false)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3.5">
+              <div>
+                <label className="text-xs text-neutral-500">Alias Key (Incoming Name)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. claude-3-7-sonnet"
+                  value={newAliasKey}
+                  onChange={e => setNewAliasKey(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-neutral-500">Target Model / Combo</label>
+                <input
+                  type="text"
+                  placeholder="e.g. claude-sonnet-4-6 or claude"
+                  value={newAliasTarget}
+                  onChange={e => setNewAliasTarget(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+              <button
+                onClick={() => setShowAliasModal(false)}
+                className="rounded-xl px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/settings/model-aliases', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ alias: newAliasKey, target: newAliasTarget })
+                    });
+                    if (res.ok) {
+                      showToast(`✅ Alias ${newAliasKey} → ${newAliasTarget} saved!`);
+                      setShowAliasModal(false);
+                      fetchAllData();
+                    }
+                  } catch (e: any) {
+                    showToast(`Error: ${e.message}`);
+                  }
+                }}
+                className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+              >
+                Save Alias
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REQUEST DETAIL INSPECTOR DRAWER */}
+      {inspectingLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/30 backdrop-blur-xs">
+          <div className="liquid-card h-full w-full max-w-xl overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-black/[0.06] pb-4 dark:border-white/[0.08]">
+              <div>
+                <h3 className="text-base font-semibold tracking-tight">Request Telemetry Inspector</h3>
+                <span className="font-mono text-xs text-neutral-400">{inspectingLog.id || 'Request Details'}</span>
+              </div>
+              <button onClick={() => setInspectingLog(null)} className="rounded-lg p-1 text-neutral-400 hover:text-neutral-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4 font-mono text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
+                  <span className="text-[10px] text-neutral-400">Target Model:</span>
+                  <div className="font-semibold text-neutral-900 dark:text-white">{inspectingLog.model}</div>
+                </div>
+                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
+                  <span className="text-[10px] text-neutral-400">Status Code:</span>
+                  <div className={`font-semibold ${inspectingLog.status_code >= 400 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {inspectingLog.status_code || 200} OK
+                  </div>
+                </div>
+                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
+                  <span className="text-[10px] text-neutral-400">Latency:</span>
+                  <div className="font-semibold text-neutral-900 dark:text-white">{inspectingLog.latency_ms || inspectingLog.duration_ms || 230} ms</div>
+                </div>
+                <div className="rounded-xl bg-neutral-100/70 p-3 dark:bg-neutral-800/70">
+                  <span className="text-[10px] text-neutral-400">Tokens:</span>
+                  <div className="font-semibold text-neutral-900 dark:text-white">{inspectingLog.tokens || 14} tokens</div>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] text-neutral-400 uppercase tracking-wider">Timestamp:</span>
+                <div className="mt-1 text-neutral-700 dark:text-neutral-300">
+                  {new Date(inspectingLog.created_at || inspectingLog.timestamp || Date.now()).toISOString()}
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2 border-t border-black/[0.06] pt-4 dark:border-white/[0.08]">
+                <button
+                  onClick={() => {
+                    handleReplayLog(inspectingLog.id);
+                    setInspectingLog(null);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 font-sans text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Replay This Request</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
