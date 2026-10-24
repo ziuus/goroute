@@ -12,6 +12,7 @@ import (
 
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/openai"
+	"github.com/ziuus/goroute/pkg/storage"
 )
 
 // AnthropicMessageRequest represents an incoming /v1/messages POST request
@@ -122,6 +123,8 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	if req.MaxTokens > 0 {
 		maxTokensPtr = &req.MaxTokens
 	}
+
+	req.Model = storage.ResolveModelAlias(req.Model)
 
 	// Translate Anthropic format to OpenAI ChatRequest
 	chatReq := providers.ChatRequest{
