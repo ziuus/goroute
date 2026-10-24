@@ -9,6 +9,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -253,4 +257,113 @@ func (a *Account) DiscoverProjectID(ctx context.Context) {
 	if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && data.CloudaicompanionProject.ID != "" {
 		a.ProjectID = data.CloudaicompanionProject.ID
 	}
+}
+
+// AutoImportLocalAntigravity discovers logged-in Google Antigravity accounts from local IDE & CLI configs.
+func AutoImportLocalAntigravity(ctx context.Context) ([]*Account, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var accounts []*Account
+
+	addAccount := func(refresh, access, email, source string) {
+		refresh = strings.TrimSpace(refresh)
+		if refresh == "" || seen[refresh] {
+			return
+		}
+		seen[refresh] = true
+
+		acc := &Account{
+			ID:           fmt.Sprintf("agy-%s-%d", source, len(accounts)+1),
+			Pool:         "pool1",
+			RefreshToken: refresh,
+			AccessToken:  access,
+			Email:        email,
+		}
+
+		// Proactively refresh access token & discover project metadata
+		if freshTok, err := acc.GetValidAccessToken(ctx); err == nil && freshTok != "" {
+			if acc.Email == "" {
+				acc.FetchUserInfo(ctx)
+			}
+			acc.DiscoverProjectID(ctx)
+		}
+		if acc.ProjectID == "" {
+			acc.ProjectID = "aicode-consumers"
+		}
+		accounts = append(accounts, acc)
+	}
+
+	// 1. Antigravity CLI Token Files
+	cliPatterns := []string{
+		filepath.Join(home, ".gemini", "antigravity-cli", "antigravity-oauth-token"),
+		filepath.Join(home, ".gemini", "antigravity", "antigravity-oauth-token"),
+		filepath.Join(home, ".config", "agentcontrol", "profiles", "*", ".gemini", "antigravity-cli", "antigravity-oauth-token"),
+	}
+
+	for _, pat := range cliPatterns {
+		matches, _ := filepath.Glob(pat)
+		for _, file := range matches {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			var tokPayload struct {
+				Token struct {
+					AccessToken  string `json:"access_token"`
+					RefreshToken string `json:"refresh_token"`
+				} `json:"token"`
+				Email string `json:"id_token_email"`
+			}
+			if err := json.Unmarshal(data, &tokPayload); err == nil && tokPayload.Token.RefreshToken != "" {
+				addAccount(tokPayload.Token.RefreshToken, tokPayload.Token.AccessToken, tokPayload.Email, "cli")
+			}
+		}
+	}
+
+	// 2. Antigravity IDE SQLite State Database
+	ideDbs := []string{
+		filepath.Join(home, ".config", "Antigravity", "User", "globalStorage", "state.vscdb"),
+		filepath.Join(home, ".config", "Antigravity IDE", "User", "globalStorage", "state.vscdb"),
+	}
+
+	reRefresh := regexp.MustCompile(`1//[a-zA-Z0-9_\-]+`)
+	reAccess := regexp.MustCompile(`ya29\.[a-zA-Z0-9_\-]+`)
+
+	for _, dbPath := range ideDbs {
+		if _, err := os.Stat(dbPath); err != nil {
+			continue
+		}
+		out, err := exec.Command("sqlite3", dbPath, "SELECT value FROM ItemTable WHERE key = 'antigravityUnifiedStateSync.oauthToken';").Output()
+		if err != nil || len(out) == 0 {
+			continue
+		}
+
+		rawStr := string(out)
+		decoded, err := base64.StdEncoding.DecodeString(rawStr)
+		searchSpace := string(decoded)
+		if err != nil {
+			searchSpace = rawStr
+		}
+
+		refreshMatches := reRefresh.FindAllString(searchSpace, -1)
+		accessMatches := reAccess.FindAllString(searchSpace, -1)
+
+		for i, ref := range refreshMatches {
+			accTok := ""
+			if i < len(accessMatches) {
+				accTok = accessMatches[i]
+			}
+			addAccount(ref, accTok, "", "ide")
+		}
+	}
+
+	if len(accounts) == 0 {
+		return nil, fmt.Errorf("no locally logged-in Antigravity accounts detected in CLI or IDE paths")
+	}
+
+	return accounts, nil
 }

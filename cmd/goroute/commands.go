@@ -451,6 +451,65 @@ func NewAuthCmd() *cobra.Command {
 
 			imported := 0
 
+			// 0. Import Antigravity (Local IDE & CLI)
+			if target == "antigravity" || target == "all" {
+				accounts, err := antigravity.AutoImportLocalAntigravity(cmd.Context())
+				if err == nil && len(accounts) > 0 {
+					pIdx := -1
+					for i, p := range cfg.Providers {
+						if p.ID == "antigravity" {
+							pIdx = i
+							break
+						}
+					}
+					if pIdx == -1 {
+						cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+							ID:       "antigravity",
+							Type:     "antigravity",
+							Strategy: "priority",
+						})
+						pIdx = len(cfg.Providers) - 1
+					}
+
+					for _, acc := range accounts {
+						foundAcc := false
+						for j, existing := range cfg.Providers[pIdx].Accounts {
+							if existing.RefreshToken == acc.RefreshToken {
+								cfg.Providers[pIdx].Accounts[j].AccessToken = acc.AccessToken
+								if acc.Email != "" {
+									cfg.Providers[pIdx].Accounts[j].Email = acc.Email
+								}
+								if acc.ProjectID != "" {
+									cfg.Providers[pIdx].Accounts[j].AccountID = acc.ProjectID
+								}
+								foundAcc = true
+								break
+							}
+						}
+						if !foundAcc {
+							accID := fmt.Sprintf("agy-acc-%d", len(cfg.Providers[pIdx].Accounts)+1)
+							cfg.Providers[pIdx].Accounts = append(cfg.Providers[pIdx].Accounts, config.AccountConfig{
+								ID:           accID,
+								Pool:         "pool1",
+								RefreshToken: acc.RefreshToken,
+								AccessToken:  acc.AccessToken,
+								Email:        acc.Email,
+								AccountID:    acc.ProjectID,
+								Weight:       1,
+							})
+							imported++
+							fmt.Printf("✅ Imported local Antigravity account: %s (%s, project: %s)\n",
+								accID, acc.Email, acc.ProjectID)
+						}
+					}
+					if len(cfg.Providers[pIdx].Accounts) > 0 && cfg.Providers[pIdx].RefreshToken == "" {
+						cfg.Providers[pIdx].RefreshToken = cfg.Providers[pIdx].Accounts[0].RefreshToken
+					}
+				} else if target == "antigravity" {
+					return fmt.Errorf("failed to import local antigravity accounts: %v", err)
+				}
+			}
+
 			// 1. Import Kiro
 			if target == "kiro" || target == "all" {
 				home, _ := os.UserHomeDir()
@@ -1031,7 +1090,74 @@ func NewSyncCmd() *cobra.Command {
 				_, _ = http.Post("http://127.0.0.1:8128/api/reload", "application/json", nil)
 				return nil
 			}
-			return fmt.Errorf("unknown sync target: %s (supported: omniroute)", source)
+
+			if source == "antigravity" {
+				fmt.Println("⚡ Scanning and importing local Antigravity accounts from CLI & IDE...")
+				accounts, err := antigravity.AutoImportLocalAntigravity(cmd.Context())
+				if err != nil {
+					return fmt.Errorf("antigravity import error: %w", err)
+				}
+				cfg, err := config.Load(defaultCfg)
+				if err != nil {
+					cfg = config.DefaultConfig()
+				}
+				pIdx := -1
+				for i, p := range cfg.Providers {
+					if p.ID == "antigravity" {
+						pIdx = i
+						break
+					}
+				}
+				if pIdx == -1 {
+					cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+						ID:       "antigravity",
+						Type:     "antigravity",
+						Strategy: "priority",
+					})
+					pIdx = len(cfg.Providers) - 1
+				}
+				imported := 0
+				for _, acc := range accounts {
+					foundAcc := false
+					for j, existing := range cfg.Providers[pIdx].Accounts {
+						if existing.RefreshToken == acc.RefreshToken {
+							cfg.Providers[pIdx].Accounts[j].AccessToken = acc.AccessToken
+							if acc.Email != "" {
+								cfg.Providers[pIdx].Accounts[j].Email = acc.Email
+							}
+							foundAcc = true
+							break
+						}
+					}
+					if !foundAcc {
+						accID := fmt.Sprintf("agy-acc-%d", len(cfg.Providers[pIdx].Accounts)+1)
+						cfg.Providers[pIdx].Accounts = append(cfg.Providers[pIdx].Accounts, config.AccountConfig{
+							ID:           accID,
+							Pool:         "pool1",
+							RefreshToken: acc.RefreshToken,
+							AccessToken:  acc.AccessToken,
+							Email:        acc.Email,
+							AccountID:    acc.ProjectID,
+							Weight:       1,
+						})
+						imported++
+						fmt.Printf("✅ Imported local Antigravity account: %s (%s, project: %s)\n",
+							accID, acc.Email, acc.ProjectID)
+					}
+				}
+				if imported > 0 {
+					if err := cfg.Save(defaultCfg); err != nil {
+						return err
+					}
+					fmt.Printf("🎉 Successfully added %d new Antigravity account(s) to pool!\n", imported)
+				} else {
+					fmt.Println("ℹ All detected local Antigravity accounts are already in your pool.")
+				}
+				_, _ = http.Post("http://127.0.0.1:8128/api/reload", "application/json", nil)
+				return nil
+			}
+
+			return fmt.Errorf("unknown sync target: %s (supported: omniroute, antigravity)", source)
 		},
 	}
 }
