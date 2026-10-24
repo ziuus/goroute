@@ -263,6 +263,45 @@ export default function GoRouteDashboard() {
     }
   };
 
+  const handleImportLocalAntigravity = async () => {
+    showToast('⚡ Discovering locally logged-in Antigravity accounts from CLI & IDE...');
+    try {
+      const res = await fetch('/api/providers/import-antigravity', { method: 'POST' }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast(`✅ ${res.message || 'Imported local Antigravity accounts!'}`);
+        fetchAllData();
+        return true;
+      } else {
+        showToast(`❌ Import error: ${res.error || 'Failed'}`);
+        return false;
+      }
+    } catch (e: any) {
+      showToast(`❌ Import error: ${e.message}`);
+      return false;
+    }
+  };
+
+  const handleImportLocalProvider = async (providerType: string) => {
+    showToast(`⚡ Importing local ${providerType} credentials...`);
+    try {
+      const endpoint = providerType === 'antigravity'
+        ? '/api/providers/import-antigravity'
+        : `/api/providers/import-${providerType}`;
+      const res = await fetch(endpoint, { method: 'POST' }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast(`✅ ${res.message || `Successfully imported ${providerType}!`}`);
+        fetchAllData();
+        return true;
+      } else {
+        showToast(`❌ Import error: ${res.error || 'Failed'}`);
+        return false;
+      }
+    } catch (e: any) {
+      showToast(`❌ Import error: ${e.message}`);
+      return false;
+    }
+  };
+
   const handleResetCooldowns = async () => {
     try {
       const res = await fetch('/api/resilience/reset', { method: 'POST' }).then(r => r.json());
@@ -653,6 +692,14 @@ export default function GoRouteDashboard() {
                 <p className="text-xs text-neutral-500">Granular account pooling, individual health checks, and priority failover</p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleImportLocalAntigravity}
+                  className="flex items-center gap-1.5 rounded-xl border border-purple-500/20 bg-purple-50/60 px-3.5 py-2 text-xs font-semibold text-purple-700 shadow-xs hover:bg-purple-100/80 dark:border-purple-400/20 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-900/50"
+                  title="Discover and import locally logged-in Antigravity accounts from IDE & CLI"
+                >
+                  <Zap className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>Import Local Antigravity</span>
+                </button>
                 <button
                   onClick={handleSyncFromOmniRoute}
                   className="flex items-center gap-1.5 rounded-xl border border-black/[0.06] bg-white px-3.5 py-2 text-xs font-semibold text-neutral-700 shadow-xs hover:bg-neutral-50 dark:border-white/[0.08] dark:bg-neutral-800 dark:text-neutral-200"
@@ -1424,7 +1471,7 @@ export default function GoRouteDashboard() {
                 />
               </div>
 
-              {selectedTemplate.type !== 'kiro' && selectedTemplate.type !== 'antigravity' && selectedTemplate.type !== 'codex' && (
+              {selectedTemplate.type !== 'kiro' && selectedTemplate.type !== 'antigravity' && selectedTemplate.type !== 'codex' && selectedTemplate.type !== 'cursor' && selectedTemplate.type !== 'copilot' && (
                 <>
                   <div>
                     <label className="text-xs text-neutral-500">Base URL</label>
@@ -1448,17 +1495,166 @@ export default function GoRouteDashboard() {
                 </>
               )}
 
-              {selectedTemplate.type === 'kiro' && (
-                <div className="rounded-xl bg-blue-50/60 p-3 text-xs text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                  <p className="font-semibold">⚡ AWS Q Device Flow Integration</p>
-                  <p className="mt-1 text-[11px]">Connecting AWS Q Kiro will authorize this gateway to receive scoped AWS Q credentials.</p>
+              {selectedTemplate.type === 'antigravity' && (
+                <div className="space-y-4">
+                  {/* Option 1: 1-Click Local Discovery (Recommended) */}
+                  <div className="rounded-2xl border border-purple-500/30 bg-purple-50/50 p-4 dark:border-purple-500/20 dark:bg-purple-950/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-bold text-white">1</span>
+                          <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import Local Antigravity (IDE & CLI)</h4>
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Recommended</span>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                          Instantly scans locally logged-in Google Antigravity tokens from Antigravity IDE SQLite state (<code className="font-mono text-[10px]">state.vscdb</code>) and CLI OAuth files. Automatically provisions refresh tokens into the active quota pool without re-logging in.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3.5">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const ok = await handleImportLocalAntigravity();
+                          if (ok) setShowAddModal(false);
+                        }}
+                        className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-purple-500/20 hover:bg-purple-700 transition active:scale-95"
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        <span>Discover & Import Local Accounts</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Option 2: Manual Refresh Token */}
+                  <div className="rounded-2xl border border-black/[0.06] bg-neutral-50/60 p-4 dark:border-white/[0.06] dark:bg-neutral-900/40">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-500 text-[10px] font-bold text-white">2</span>
+                      <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Manual Refresh Token Input</h4>
+                    </div>
+                    <p className="mt-1 text-[11px] text-neutral-500">
+                      Already have a Google Cloud Code OAuth refresh token (<code className="font-mono text-[10px]">1//...</code>)? Paste it here directly.
+                    </p>
+                    <div className="mt-2.5">
+                      <input
+                        type="password"
+                        placeholder="1//0g..."
+                        value={addRefreshToken}
+                        onChange={e => setAddRefreshToken(e.target.value)}
+                        className="w-full rounded-xl border border-black/[0.06] bg-white p-2.5 font-mono text-xs outline-none dark:border-white/[0.08] dark:bg-neutral-800"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {selectedTemplate.type === 'antigravity' && (
-                <div className="rounded-xl bg-purple-50/60 p-3 text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-                  <p className="font-semibold">⚡ Google Antigravity OAuth Integration</p>
-                  <p className="mt-1 text-[11px]">Connects Google Cloud Code tokens directly with full multi-account quota pooling.</p>
+              {selectedTemplate.type === 'kiro' && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-blue-500/30 bg-blue-50/50 p-4 dark:border-blue-500/20 dark:bg-blue-950/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">1</span>
+                          <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import Local AWS Q Kiro (CLI & SSO)</h4>
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                          Discovers local Kiro CLI tokens from <code className="font-mono text-[10px]">data.sqlite3</code> and AWS SSO cached tokens (<code className="font-mono text-[10px]">~/.aws/sso/cache/</code>).
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3.5">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const ok = await handleImportLocalProvider('kiro');
+                          if (ok) setShowAddModal(false);
+                        }}
+                        className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:bg-blue-700 transition active:scale-95"
+                      >
+                        <Zap className="h-3.5 w-3.5" />
+                        <span>Import Local Kiro Credentials</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedTemplate.type === 'codex' && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-50/50 p-4 dark:border-emerald-500/20 dark:bg-emerald-950/30">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">1</span>
+                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import OpenAI Codex CLI Session</h4>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                    Extracts logged-in OAuth session tokens from Codex CLI config (<code className="font-mono text-[10px]">~/.config/codex/credentials.json</code>).
+                  </p>
+                  <div className="mt-3.5">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await handleImportLocalProvider('codex');
+                        if (ok) setShowAddModal(false);
+                      }}
+                      className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700 transition active:scale-95"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      <span>Import Local Codex Session</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedTemplate.type === 'cursor' && (
+                <div className="rounded-2xl border border-sky-500/30 bg-sky-50/50 p-4 dark:border-sky-500/20 dark:bg-sky-950/30">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-[10px] font-bold text-white">1</span>
+                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import Local Cursor Session</h4>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                    Reads local Cursor editor authentication state from SQLite storage.
+                  </p>
+                  <div className="mt-3.5">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await handleImportLocalProvider('cursor');
+                        if (ok) setShowAddModal(false);
+                      }}
+                      className="flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-sky-500/20 hover:bg-sky-700 transition active:scale-95"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      <span>Import Local Cursor Auth</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedTemplate.type === 'copilot' && (
+                <div className="rounded-2xl border border-neutral-500/30 bg-neutral-50/50 p-4 dark:border-neutral-500/20 dark:bg-neutral-900/40">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-[10px] font-bold text-white">1</span>
+                    <h4 className="text-xs font-bold text-neutral-900 dark:text-white">Auto-Import GitHub Copilot CLI Token</h4>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">1-Click</span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 dark:text-neutral-300">
+                    Reads GitHub Copilot tokens from local gh CLI or hosts authentication config.
+                  </p>
+                  <div className="mt-3.5">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await handleImportLocalProvider('copilot');
+                        if (ok) setShowAddModal(false);
+                      }}
+                      className="flex items-center gap-2 rounded-xl bg-neutral-800 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-neutral-800/20 hover:bg-neutral-900 transition active:scale-95"
+                    >
+                      <Zap className="h-3.5 w-3.5" />
+                      <span>Import GitHub Copilot Token</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

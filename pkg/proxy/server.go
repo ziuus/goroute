@@ -139,6 +139,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/sync-omniroute", s.handleSyncOmniRoute)
 	s.mux.Get("/api/oauth/kiro/device-authorize", s.handleKiroDeviceAuthorize)
 	s.mux.Post("/api/oauth/kiro/device-poll", s.handleKiroDevicePoll)
+	s.mux.Post("/api/providers/import-antigravity", s.handleImportAntigravity)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
@@ -2224,6 +2225,103 @@ func (s *Server) handleSyncOmniRoute(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"result":  res,
 		"message": "Successfully synchronized all accounts and combos from OmniRoute database",
+	})
+}
+
+func (s *Server) handleImportAntigravity(w http.ResponseWriter, r *http.Request) {
+	accounts, err := antigravity.AutoImportLocalAntigravity(r.Context())
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	pIdx := -1
+	for i, p := range cfg.Providers {
+		if p.ID == "antigravity" {
+			pIdx = i
+			break
+		}
+	}
+	if pIdx == -1 {
+		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+			ID:       "antigravity",
+			Type:     "antigravity",
+			Strategy: "priority",
+		})
+		pIdx = len(cfg.Providers) - 1
+	}
+
+	imported := 0
+	var importedAccounts []string
+	for _, acc := range accounts {
+		foundAcc := false
+		for j, existing := range cfg.Providers[pIdx].Accounts {
+			if existing.RefreshToken == acc.RefreshToken {
+				cfg.Providers[pIdx].Accounts[j].AccessToken = acc.AccessToken
+				if acc.Email != "" {
+					cfg.Providers[pIdx].Accounts[j].Email = acc.Email
+				}
+				if acc.ProjectID != "" {
+					cfg.Providers[pIdx].Accounts[j].AccountID = acc.ProjectID
+				}
+				foundAcc = true
+				break
+			}
+		}
+		if !foundAcc {
+			accID := fmt.Sprintf("agy-acc-%d", len(cfg.Providers[pIdx].Accounts)+1)
+			cfg.Providers[pIdx].Accounts = append(cfg.Providers[pIdx].Accounts, config.AccountConfig{
+				ID:           accID,
+				Pool:         "pool1",
+				RefreshToken: acc.RefreshToken,
+				AccessToken:  acc.AccessToken,
+				Email:        acc.Email,
+				AccountID:    acc.ProjectID,
+				Weight:       1,
+			})
+			imported++
+			importedAccounts = append(importedAccounts, fmt.Sprintf("%s (%s)", accID, acc.Email))
+		}
+	}
+
+	if len(cfg.Providers[pIdx].Accounts) > 0 && cfg.Providers[pIdx].RefreshToken == "" {
+		cfg.Providers[pIdx].RefreshToken = cfg.Providers[pIdx].Accounts[0].RefreshToken
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  "failed to save configuration: " + err.Error(),
+		})
+		return
+	}
+
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"imported": imported,
+		"total":    len(cfg.Providers[pIdx].Accounts),
+		"accounts": importedAccounts,
+		"message":  fmt.Sprintf("Discovered %d local Antigravity accounts (%d new added to active pool)", len(accounts), imported),
 	})
 }
 
