@@ -2,12 +2,12 @@
 
 ## High-Level System Architecture
 
-GoRoute is split into two co-operative layers designed for maximal throughput, minimal memory usage, and zero runtime bloat:
+GoRoute is split into two co-operative layers designed for maximal throughput, minimal memory usage (< 5MB RSS), and zero runtime bloat:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        AGENT CLIENTS & TOOLS                           │
-│     Claude Code CLI • OpenCode • Codex CLI • Aider • OpenClaw • Cursor │
+│   Claude Code CLI • OpenCode • Codex CLI • Aider • OpenClaw • Cursor   │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ HTTP / SSE
                                     ▼
@@ -23,9 +23,12 @@ GoRoute is split into two co-operative layers designed for maximal throughput, m
 │                                   │                                    │
 │  ┌────────────────────────────────▼─────────────────────────────────┐  │
 │  │                     ROUTER & COMBO ENGINE                        │  │
-│  │   • Exact Combo Match (/home/zius/.goroute/config.yaml)          │  │
-│  │   • EWMA Latency Tracker & Cooldown Circuit                      │  │
-│  │   • SQLite WAL Audit Logging (pkg/storage/db.go)                 │  │
+│  │   • Dynamic Model Aliases (storage.ResolveModelAlias)            │  │
+│  │   • Combos Waterfall (failover, round_robin, lowest_latency)     │  │
+│  │   • Pre-emptive Quota Fallback (< 5% skip)                       │  │
+│  │   • Cooldown Circuit Breaker (10m for 429/500, 30s for timeout) │  │
+│  │   • Proactive Token Health Loop (pkg/tokens/scheduler.go)        │  │
+│  │   • SQLite WAL Audit Logging (~/.goroute/goroute.db)             │  │
 │  └────────────────────────────────┬─────────────────────────────────┘  │
 └───────────────────────────────────┼────────────────────────────────────┘
                                     │ Purego C-ABI (No CGO)
@@ -38,44 +41,60 @@ GoRoute is split into two co-operative layers designed for maximal throughput, m
 │  │ (Fuzzy Family Match)   │  │ (Secret Mask)  │  │ (Token Compress) │  │
 │  └────────────────────────┘  └────────────────┘  └──────────────────┘  │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │
+                                    │ Upstream API Calls
        ┌────────────────────────────┼────────────────────────────┐
        ▼                            ▼                            ▼
 ┌──────────────┐             ┌──────────────┐             ┌──────────────┐
 │ Antigravity  │             │  AWS Q Kiro  │             │ OpenRouter / │
-│ Google OAuth │             │ Social OAuth │             │ Custom APIs  │
+│ Multi-Acct   │             │  Multi-Acct  │             │ Groq / NIM / │
+│ OAuth Pool   │             │  OIDC Pool   │             │ Frontier API │
 └──────────────┘             └──────────────┘             └──────────────┘
 ```
 
 ---
 
-## Key Subsystems
+## 1. Request Lifecycle & Routing Engine
 
-### 1. Dual Protocol Normalization (`pkg/proxy/anthropic.go`)
-- **OpenAI -> Anthropic Stream Transformation**: Incoming Anthropic `/v1/messages` requests are mapped to universal `providers.ChatRequest`. Upstream OpenAI-format SSE streams are translated on the fly into Anthropic SSE events (`message_start`, `content_block_start`, `content_block_delta`, `message_delta`, `message_stop`).
-- **Tool Calling AST Mapping**: Bidirectionally translates Anthropic `<tool_use>` / `<tool_result>` blocks to OpenAI `tool_calls` schema and handles JSON argument deltas seamlessly.
+When an agent sends a request (`POST /v1/chat/completions` or `POST /v1/messages`):
 
-### 2. Rust Acceleration Bridge (`pkg/fast/rust.go`)
-- Uses `github.com/ebitengine/purego` for dynamic loading of `libgoroute_fast.so` at runtime.
-- **Zero-CGO compilation**: The Go project builds instantly without `gcc` or `CGO_ENABLED=1`.
-- **Functions exported from Rust**:
-  - `goroute_rust_version`: Version and capability signature.
-  - `goroute_rust_resolve_model`: High-speed SIMD regex matching that classifies models into families (`claude`, `openai`, `gemini`, `deepseek`) and binds them to active providers.
-  - `goroute_rust_sanitize_pii`: Regex scanner that redacts leaked API tokens and OAuth credentials.
-  - `goroute_rust_compress`: Multi-tier Caveman prompt compressor protecting code blocks and inline code literals.
-  - `goroute_rust_count_tokens`: Calibrated sub-microsecond token estimator.
+1. **Protocol Normalization**:
+   - OpenAI format requests pass directly into `providers.ChatRequest`.
+   - Anthropic `/v1/messages` requests are parsed into `AnthropicMessageRequest`, system prompt arrays are flattened, and parameters are adapted.
+2. **Dynamic Alias Resolution**:
+   - `storage.ResolveModelAlias(req.Model)` looks up custom and built-in aliases (`claude-3-5-sonnet-latest` $\rightarrow$ `claude-sonnet-4-6`, `gpt-4` $\rightarrow$ `gpt-4o`).
+3. **Combo & Cascade Evaluation**:
+   - If the model matches a configured combo (e.g. `claude`, `deepseek`, `auto`), targets are ordered according to the chosen strategy:
+     - `failover`: Sequential order.
+     - `round_robin`: Atomic counter offset.
+     - `lowest_latency`: Exponentially weighted moving average (EWMA) latency sorting.
+     - `quota_weighted`: Remaining quota percentage sorting.
+4. **Resilience & Pre-Emptive Guards**:
+   - If a target model is in cooldown, it is skipped.
+   - If remaining quota is $< 5\%$, it is skipped pre-emptively to avoid upstream 429 rate limits.
+   - Parameters are sanitized for provider-specific constraints via `translator.SanitizeChatRequest`.
+5. **Execution & Circuit Breaker**:
+   - The selected provider executes the request.
+   - On success ($200 \le \text{status} < 400$), latency telemetry is recorded.
+   - On failure ($429, 402, 5xx$), the model enters a 10-minute cooldown and GoRoute immediately tries the next target in the combo cascade without breaking the client connection.
 
-### 3. Resilience & Cascade Strategy (`pkg/router/router.go`)
-- **Strategies Supported**:
-  - `failover`: Sequential cascade upon HTTP 429, 503, or connection timeouts.
-  - `lowest_latency`: EWMA-weighted routing favoring the fastest responsive upstream.
-  - `quota_weighted`: Account rotation respecting 5-hour rolling session quotas.
-- **Dynamic Cooldown**: When an account returns 429 or auth failure, it enters exponential cooldown and triggers proactive token refresh.
+---
 
-### 4. Storage Architecture (`pkg/storage/`)
-- SQLite database configured with `WAL` (Write-Ahead Logging), `busy_timeout=5000`, and `synchronous=NORMAL`.
-- Stores:
-  - `call_logs`: Full request/response telemetry, latencies, tokens, and errors.
-  - `combos`: Model combo configurations.
-  - `radar_catalog`: Synced model catalog across all upstream providers.
-  - `conductor_tasks`: Agent task queue and orchestration history.
+## 2. Multi-Account Pooling & Background Token Health
+
+For providers with multiple pooled accounts (Google Antigravity, AWS Kiro):
+* Accounts are pooled under `pool1` with priority or round-robin strategies.
+* `pkg/tokens/scheduler.go` runs a proactive background loop every **3 minutes**:
+  - Tests connectivity and latency for each account independently.
+  - Automatically refreshes expired OAuth access tokens using stored refresh tokens.
+  - Inactive or standby accounts can be toggled on/off via `POST /api/providers/{id}/accounts/{accId}/toggle`.
+
+---
+
+## 3. Native OmniRoute Vault Migration (`pkg/sync`)
+
+GoRoute includes a pure Go decryption engine for OmniRoute's SQLite database (`~/.omniroute/storage.sqlite`):
+* Reads `STORAGE_ENCRYPTION_KEY` from `~/.omniroute/.env`.
+* Derives the AES key using `scrypt` ($N=32768, r=8, p=1$).
+* Decrypts AES-256-GCM encrypted tokens (handling 16-byte IVs).
+* Dynamically imports all configured accounts, keys, and combos into `~/.goroute/config.yaml`.
+* Validates combo targets, filtering out references to unconfigured providers.
