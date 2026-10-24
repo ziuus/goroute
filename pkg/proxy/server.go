@@ -46,6 +46,7 @@ import (
 	"github.com/ziuus/goroute/pkg/rtk"
 	"github.com/ziuus/goroute/pkg/storage"
 	"github.com/ziuus/goroute/pkg/store"
+	"github.com/ziuus/goroute/pkg/sync"
 	"github.com/ziuus/goroute/pkg/tokens"
 	"github.com/ziuus/goroute/pkg/tunnel"
 	"github.com/ziuus/goroute/web"
@@ -2182,13 +2183,13 @@ func (s *Server) handleKiroDevicePoll(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSyncOmniRoute(w http.ResponseWriter, r *http.Request) {
-	out, err := exec.Command("python3", "/tmp/full_restore_sync.py").CombinedOutput()
+	res, err := sync.SyncFromOmniRoute(s.cfgPath)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "error",
-			"error":  string(out),
+			"error":  err.Error(),
 		})
 		return
 	}
@@ -2196,8 +2197,8 @@ func (s *Server) handleSyncOmniRoute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
-		"output":  strings.TrimSpace(string(out)),
-		"message": "Successfully synchronized all accounts from OmniRoute database",
+		"result":  res,
+		"message": "Successfully synchronized all accounts and combos from OmniRoute database",
 	})
 }
 
