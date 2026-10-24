@@ -187,10 +187,31 @@ export default function GoRouteDashboard() {
   };
 
   useEffect(() => {
+    const saved = localStorage.getItem('goroute-theme');
+    const prefersDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : true;
+    const isDark = saved !== null ? saved === 'dark' : prefersDark;
+    setDarkMode(isDark);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
     fetchAllData();
     const interval = setInterval(fetchAllData, 8000);
     return () => clearInterval(interval);
   }, []);
+
+  const toggleDarkMode = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem('goroute-theme', next ? 'dark' : 'light');
+    if (next) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
 
   const handleTestPing = async (providerId: string, accountId?: string) => {
     showToast(`⚡ Testing ping latency for ${providerId}...`);
@@ -397,35 +418,35 @@ export default function GoRouteDashboard() {
   }, [catalog, searchQuery, catalogFilterProvider]);
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark bg-[#0F1013] text-[#F4F4F6]' : 'bg-[#F4F3ED] text-[#141518]'}`}>
+    <div className={`min-h-screen ${darkMode ? 'dark bg-[#0B0F17] text-slate-100' : 'bg-slate-50 text-slate-900'} transition-colors`}>
       
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-xl border border-[#E2E0D5] bg-white px-4 py-3 text-xs font-medium text-[#141518] shadow-lg dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white">
-          <span className="h-2 w-2 rounded-full bg-[#C93D2A] animate-ping" />
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-900 shadow-xl dark:border-slate-800 dark:bg-slate-900 dark:text-white">
+          <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping" />
           <span>{toastMsg}</span>
         </div>
       )}
 
       {/* Top Header Navigation */}
-      <header className="sticky top-0 z-40 border-b border-[#E2E0D5] bg-[#F4F3ED]/90 px-6 py-3.5 backdrop-blur-md dark:border-[#272933] dark:bg-[#0F1013]/90">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-6 py-3.5 backdrop-blur-md dark:border-slate-800 dark:bg-[#0B0F17]/95">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C93D2A] text-xs font-bold text-white shadow-xs">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-600 text-xs font-bold text-white shadow-xs">
               ⚡
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-sm font-bold tracking-tight text-[#141518] dark:text-white uppercase">GoRoute</span>
-              <span className="font-mono text-[11px] text-[#66655E] dark:text-[#9597A1]">v0.3.0</span>
+              <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-white uppercase">GoRoute</span>
+              <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">v0.3.0</span>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             {/* Minimal Live Status */}
-            <div className="hidden items-center gap-2.5 font-mono text-[11px] text-[#66655E] dark:text-[#9597A1] md:flex">
+            <div className="hidden items-center gap-2.5 rounded-full border border-slate-200 bg-slate-100/70 px-3 py-1 font-mono text-[11px] text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 md:flex">
               <span className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#15803D]" />
-                <span className="text-[#141518] dark:text-[#F4F4F6] font-medium">:8128</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="font-semibold text-slate-900 dark:text-white">:8128</span>
               </span>
               <span>•</span>
               <span><strong>0.86ms</strong> routing</span>
@@ -435,20 +456,20 @@ export default function GoRouteDashboard() {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E0D5] bg-white text-[#66655E] transition hover:bg-[#ECEAE2] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-[#9597A1] dark:hover:bg-[#23252E]"
+                onClick={toggleDarkMode}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 title="Toggle Theme"
               >
-                {darkMode ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5" />}
+                {darkMode ? <Sun className="h-3.5 w-3.5 text-amber-400" /> : <Moon className="h-3.5 w-3.5 text-slate-600" />}
               </button>
 
               <button
                 onClick={fetchAllData}
                 disabled={loading}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E0D5] bg-white text-[#66655E] transition hover:bg-[#ECEAE2] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-[#9597A1] dark:hover:bg-[#23252E]"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 title="Refresh State"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-[#C93D2A]' : ''}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-rose-600' : ''}`} />
               </button>
 
               <button
@@ -458,7 +479,7 @@ export default function GoRouteDashboard() {
                   setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
                   setShowAddModal(true);
                 }}
-                className="flex items-center gap-1.5 rounded-lg bg-[#C93D2A] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#B33423] active:scale-98"
+                className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
               >
                 <span>Connect Provider</span>
                 <span className="font-mono text-xs">↗</span>
@@ -472,7 +493,7 @@ export default function GoRouteDashboard() {
       <main className="mx-auto max-w-7xl px-6 py-8">
         
         {/* Navigation Bar Tabs */}
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E0D5] pb-2 dark:border-[#272933]">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-2 dark:border-slate-800">
           <nav className="flex flex-wrap items-center gap-1">
             {[
               { id: 'overview', num: '01', label: 'Overview' },
@@ -492,21 +513,21 @@ export default function GoRouteDashboard() {
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`group relative flex items-center gap-1.5 px-3 py-2 text-xs transition ${
                     isActive
-                      ? 'font-semibold text-[#141518] dark:text-white'
-                      : 'text-[#66655E] hover:text-[#141518] dark:text-[#9597A1] dark:hover:text-white'
+                      ? 'font-bold text-slate-900 dark:text-white'
+                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                   }`}
                 >
-                  <span className={`font-mono text-[10px] ${isActive ? 'text-[#C93D2A]' : 'text-[#98968D]'}`}>
+                  <span className={`font-mono text-[10px] ${isActive ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500 dark:text-slate-500'}`}>
                     {tab.num}
                   </span>
                   <span>{tab.label}</span>
                   {tab.count !== undefined && (
-                    <span className="font-mono text-[10px] text-[#98968D]">
+                    <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
                       ({tab.count})
                     </span>
                   )}
                   {isActive && (
-                    <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-[#C93D2A]" />
+                    <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-rose-600 dark:bg-rose-500" />
                   )}
                 </button>
               );
@@ -514,13 +535,13 @@ export default function GoRouteDashboard() {
           </nav>
 
           <div className="relative min-w-[220px]">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#98968D]" />
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               placeholder="Search models, providers..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-[#E2E0D5] bg-white py-1.5 pl-9 pr-3 text-xs outline-none transition focus:border-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22]"
+              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
             />
           </div>
         </div>
@@ -529,25 +550,25 @@ export default function GoRouteDashboard() {
         {activeTab === 'overview' && (
           <div className="space-y-10">
             {/* Hero Section */}
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#E2E0D5] pb-6 dark:border-[#272933]">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-800">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
-                  <span className="text-[#C93D2A]">▪ 01</span>
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  <span className="text-rose-600 dark:text-rose-400 font-bold">▪ 01</span>
                   <span>/</span>
                   <span>THE SYSTEM</span>
                 </div>
-                <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-[#141518] dark:text-[#F4F4F6]">
-                  Ultra-low latency. <span className="text-[#C93D2A] dark:text-[#E24B38]">Minimal footprint.</span>
+                <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+                  Ultra-low latency. <span className="text-rose-600 dark:text-rose-400">Minimal footprint.</span>
                 </h1>
-                <p className="mt-1.5 text-xs text-[#66655E] dark:text-[#9597A1]">
+                <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
                   High-throughput universal AI gateway orchestrating local pools and remote models.
                 </p>
               </div>
 
               <div className="flex items-center gap-2 text-xs">
-                <span className="font-mono text-[11px] text-[#66655E] dark:text-[#9597A1]">Status:</span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">Status:</span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   Operational
                 </span>
               </div>
@@ -556,57 +577,57 @@ export default function GoRouteDashboard() {
             {/* Editorial 4-Stat Strip */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="liquid-card p-6">
-                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                <div className="text-[10px] font-mono tracking-widest text-slate-500 dark:text-slate-400 uppercase font-semibold">
                   01. / DISPATCH LATENCY
                 </div>
                 <div className="mt-3 flex items-baseline">
-                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">0.86</span>
-                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">ms</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">0.86</span>
+                  <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">ms</span>
                 </div>
-                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Sub-Millisecond</div>
-                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Sub-Millisecond</div>
+                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                   Purego C-ABI routing pipeline
                 </div>
               </div>
 
               <div className="liquid-card p-6">
-                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                <div className="text-[10px] font-mono tracking-widest text-slate-500 dark:text-slate-400 uppercase font-semibold">
                   02. / MEMORY FOOTPRINT
                 </div>
                 <div className="mt-3 flex items-baseline">
-                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">{gatewayMem.replace(/[^0-9.]/g, '') || '4.5'}</span>
-                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">MB</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">{gatewayMem.replace(/[^0-9.]/g, '') || '4.5'}</span>
+                  <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">MB</span>
                 </div>
-                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Near-Zero RSS</div>
-                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Near-Zero RSS</div>
+                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                   Compact daemon memory usage
                 </div>
               </div>
 
               <div className="liquid-card p-6">
-                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                <div className="text-[10px] font-mono tracking-widest text-slate-500 dark:text-slate-400 uppercase font-semibold">
                   03. / UPSTREAM POOLS
                 </div>
                 <div className="mt-3 flex items-baseline">
-                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">{providers.length}</span>
-                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">Active</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">{providers.length}</span>
+                  <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">Active</span>
                 </div>
-                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Aggregated Accounts</div>
-                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Aggregated Accounts</div>
+                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                   Antigravity, Kiro, Codex, Apinex, Groq
                 </div>
               </div>
 
               <div className="liquid-card p-6">
-                <div className="text-[10px] font-mono tracking-widest text-[#98968D] uppercase">
+                <div className="text-[10px] font-mono tracking-widest text-slate-500 dark:text-slate-400 uppercase font-semibold">
                   04. / RADAR CATALOG
                 </div>
                 <div className="mt-3 flex items-baseline">
-                  <span className="text-4xl font-black tracking-tight text-[#141518] dark:text-white">{catalog.length}</span>
-                  <span className="ml-1 text-sm font-bold text-[#C93D2A]">Models</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">{catalog.length}</span>
+                  <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">Models</span>
                 </div>
-                <div className="mt-2 text-xs font-semibold text-[#141518] dark:text-white">Live Capabilities</div>
-                <div className="mt-0.5 text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Live Capabilities</div>
+                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                   Auto-mapped model intelligence
                 </div>
               </div>
@@ -615,18 +636,18 @@ export default function GoRouteDashboard() {
             {/* Middle Section: Cascades & Host Fleet */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div className="liquid-card col-span-2 p-6">
-                <div className="flex items-center justify-between border-b border-[#E2E0D5] pb-4 dark:border-[#272933]">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-800">
                   <div>
-                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
-                      <span className="text-[#C93D2A]">▪ 02</span>
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      <span className="text-rose-600 dark:text-rose-400 font-bold">▪ 02</span>
                       <span>/</span>
                       <span>ROUTING CASCADES</span>
                     </div>
-                    <h3 className="mt-1 text-sm font-bold text-[#141518] dark:text-white">Active Failover Cascades</h3>
+                    <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white">Active Failover Cascades</h3>
                   </div>
                   <button
                     onClick={() => setActiveTab('combos')}
-                    className="flex items-center gap-1 text-xs font-semibold text-[#C93D2A] hover:underline"
+                    className="flex items-center gap-1 text-xs font-semibold text-rose-600 hover:underline dark:text-rose-400"
                   >
                     <span>Combos Studio</span>
                     <span>↗</span>
@@ -637,22 +658,22 @@ export default function GoRouteDashboard() {
                   {combos.slice(0, 4).map(c => (
                     <div
                       key={c.name}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E2E0D5] bg-[#FAF9F5] p-3.5 transition hover:border-[#C93D2A]/40 dark:border-[#272933] dark:bg-[#15161C]"
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 transition hover:border-rose-500/40 dark:border-slate-800 dark:bg-slate-800/40"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className="font-mono text-xs font-bold text-[#141518] dark:text-white">{c.name}</span>
-                        <span className="rounded border border-[#E2E0D5] bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#66655E] dark:border-[#272933] dark:bg-[#1E2028] dark:text-[#9597A1]">
+                        <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">{c.name}</span>
+                        <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                           {c.strategy}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-[#66655E] dark:text-[#9597A1]">
+                      <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-slate-600 dark:text-slate-300">
                         {c.targets?.map((t: any, idx: number) => (
                           <React.Fragment key={idx}>
-                            <span className="rounded border border-[#E2E0D5] bg-white px-2 py-0.5 text-[#141518] shadow-2xs dark:border-[#272933] dark:bg-[#1E2028] dark:text-[#F4F4F6]">
+                            <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-800 shadow-2xs dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
                               {t.provider_id}/{t.model}
                             </span>
-                            {idx < c.targets.length - 1 && <span className="text-[#98968D]">→</span>}
+                            {idx < c.targets.length - 1 && <span className="text-slate-400">→</span>}
                           </React.Fragment>
                         ))}
                       </div>
@@ -662,7 +683,7 @@ export default function GoRouteDashboard() {
                           setPlaygroundModel(c.name);
                           setActiveTab('playground');
                         }}
-                        className="flex items-center gap-1 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1 text-xs font-semibold text-[#141518] transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
+                        className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-800 transition hover:border-rose-500 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-rose-400"
                       >
                         <span>Test Run</span>
                         <span className="font-mono text-[10px]">↗</span>
@@ -674,16 +695,16 @@ export default function GoRouteDashboard() {
 
               {/* Host AI Developer Tools */}
               <div className="liquid-card p-6">
-                <div className="flex items-center justify-between border-b border-[#E2E0D5] pb-4 dark:border-[#272933]">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-800">
                   <div>
-                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
-                      <span className="text-[#C93D2A]">▪ 03</span>
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                      <span className="text-rose-600 dark:text-rose-400 font-bold">▪ 03</span>
                       <span>/</span>
                       <span>LOCAL AGENTS</span>
                     </div>
-                    <h3 className="mt-1 text-sm font-bold text-[#141518] dark:text-white">Host AI Fleet</h3>
+                    <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white">Host AI Fleet</h3>
                   </div>
-                  <span className="font-mono text-[11px] text-[#98968D]">
+                  <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
                     {cliAgents.filter(a => a.detected).length} Detected
                   </span>
                 </div>
@@ -692,14 +713,14 @@ export default function GoRouteDashboard() {
                   {cliAgents.filter(a => a.detected).slice(0, 5).map(agent => (
                     <div
                       key={agent.id}
-                      className="flex items-center justify-between rounded-xl border border-[#E2E0D5] bg-[#FAF9F5] p-3 transition hover:border-[#C93D2A]/40 dark:border-[#272933] dark:bg-[#15161C]"
+                      className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition hover:border-rose-500/40 dark:border-slate-800 dark:bg-slate-800/40"
                     >
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-                          <span className="text-xs font-bold text-[#141518] dark:text-white">{agent.name}</span>
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">{agent.name}</span>
                         </div>
-                        <p className="mt-0.5 truncate font-mono text-[10px] text-[#98968D] max-w-[160px]">
+                        <p className="mt-0.5 truncate font-mono text-[10px] text-slate-500 dark:text-slate-400 max-w-[160px]">
                           {agent.settings_file}
                         </p>
                       </div>
@@ -708,8 +729,8 @@ export default function GoRouteDashboard() {
                         onClick={() => handleConfigureCli(agent.id)}
                         className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
                           agent.configured
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                            : 'bg-[#C93D2A] text-white hover:bg-[#B33423]'
+                            ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-rose-600 text-white hover:bg-rose-700'
                         }`}
                       >
                         <span>{agent.configured ? 'Connected ✓' : 'Connect'}</span>
@@ -720,7 +741,7 @@ export default function GoRouteDashboard() {
 
                   <button
                     onClick={() => setActiveTab('fleet')}
-                    className="mt-2 w-full rounded-lg border border-[#E2E0D5] bg-white py-2 text-center text-xs font-semibold text-[#141518] transition hover:bg-[#FAF9F5] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white py-2 text-center text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-rose-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-rose-400"
                   >
                     View All 35 CLI Agents ↗
                   </button>
@@ -733,31 +754,31 @@ export default function GoRouteDashboard() {
         {/* TAB: PROVIDERS & MULTI-ACCOUNT MANAGER */}
         {activeTab === 'providers' && (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E2E0D5] pb-4 dark:border-[#272933]">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-[#98968D]">
-                  <span className="text-[#C93D2A]">▪ 02</span>
+                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  <span className="text-rose-600 dark:text-rose-400 font-bold">▪ 02</span>
                   <span>/</span>
                   <span>UPSTREAM POOLS</span>
                 </div>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-[#141518] dark:text-white">Providers & Account Pools</h2>
-                <p className="mt-0.5 text-xs text-[#66655E] dark:text-[#9597A1]">Granular multi-account failover, quota pooling, and zero-downtime health monitors</p>
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-white">Providers & Account Pools</h2>
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">Granular multi-account failover, quota pooling, and zero-downtime health monitors</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleImportLocalAntigravity}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#141518] shadow-2xs transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
+                  className="flex items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 shadow-2xs transition hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
                   title="Discover and import locally logged-in Antigravity accounts from IDE & CLI"
                 >
-                  <Zap className="h-3.5 w-3.5 text-[#C93D2A]" />
+                  <Zap className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
                   <span>Import Local Antigravity</span>
                   <span className="font-mono text-xs">↗</span>
                 </button>
                 <button
                   onClick={handleSyncFromOmniRoute}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#66655E] shadow-2xs transition hover:text-[#141518] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-[#9597A1] dark:hover:text-white"
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 text-[#98968D]" />
+                  <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
                   <span>Sync OmniRoute</span>
                 </button>
                 <button
@@ -767,7 +788,7 @@ export default function GoRouteDashboard() {
                     setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
                     setShowAddModal(true);
                   }}
-                  className="flex items-center gap-1.5 rounded-lg bg-[#C93D2A] px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#B33423]"
+                  className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-rose-700"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Connect Provider</span>
@@ -786,36 +807,36 @@ export default function GoRouteDashboard() {
                   const pType = p.details?.type || 'openai';
 
                   return (
-                    <div key={p.id} className="liquid-card overflow-hidden">
+                    <div key={p.id} className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs overflow-hidden">
                       <div className="flex flex-wrap items-center justify-between gap-4 p-5">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3.5">
                           <span className="text-xl">
                             {p.id.includes('antigravity') ? '⚡' : p.id.includes('kiro') ? '☁️' : p.id.includes('codex') ? '💻' : p.id.includes('deepseek') ? '🐳' : '🤖'}
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-[#141518] dark:text-[#F4F4F6]">{p.id}</h3>
-                              <span className="rounded border border-[#E2E0D5] bg-[#FAF9F5] px-1.5 py-0.5 font-mono text-[10px] uppercase text-[#66655E] dark:border-[#272933] dark:bg-[#1E2028] dark:text-[#9597A1]">
+                              <h3 className="font-bold text-slate-900 dark:text-white text-sm">{p.id}</h3>
+                              <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] uppercase text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                 {pType}
                               </span>
                             </div>
-                            <span className="font-mono text-xs text-[#98968D]">
+                            <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
                               {p.details?.base_url || 'Internal OAuth Token Provider'}
                             </span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                          <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                             {accCount} Pool Account{accCount !== 1 ? 's' : ''}
                           </span>
 
                           <button
                             onClick={() => handleTestPing(p.id)}
-                            className="flex items-center gap-1 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#141518] transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-rose-500 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-rose-400"
                           >
-                            <Zap className="h-3 w-3 text-[#C93D2A]" />
+                            <Zap className="h-3 w-3 text-rose-600 dark:text-rose-400" />
                             <span>Test Ping</span>
                           </button>
 
@@ -824,7 +845,7 @@ export default function GoRouteDashboard() {
                               setPlaygroundModel(p.id === 'kiro' ? 'kiro/claude-sonnet-4.5' : p.id === 'antigravity' ? 'antigravity/claude-sonnet-4-6' : `${p.id}/default`);
                               setActiveTab('playground');
                             }}
-                            className="flex items-center gap-1 rounded-lg border border-[#E2E0D5] bg-white px-3 py-1.5 text-xs font-semibold text-[#141518] transition hover:border-[#C93D2A] hover:text-[#C93D2A] dark:border-[#272933] dark:bg-[#1A1B22] dark:text-white"
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-rose-500 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-rose-400"
                           >
                             <Play className="h-3 w-3" />
                             <span>Playground</span>
@@ -832,7 +853,7 @@ export default function GoRouteDashboard() {
 
                           <button
                             onClick={() => setExpandedProvider(isExpanded ? null : p.id)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E2E0D5] text-[#66655E] hover:bg-[#FAF9F5] dark:border-[#272933] dark:hover:bg-[#23252E]"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                           >
                             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                           </button>
@@ -841,12 +862,12 @@ export default function GoRouteDashboard() {
 
                       {/* Expandable Account Pool Drawer */}
                       {isExpanded && (
-                        <div className="border-t border-black/[0.04] bg-neutral-50/50 p-5 dark:border-white/[0.04] dark:bg-black/20">
-                          <div className="mb-3 flex items-center justify-between text-xs text-neutral-500">
-                            <span className="font-semibold uppercase tracking-wider text-neutral-400 text-[10px]">
+                        <div className="border-t border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/40">
+                          <div className="mb-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                            <span className="font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[10px]">
                               Connection Pool Accounts ({accounts.length})
                             </span>
-                            <span>Strategy: Priority Failover with Auto-Cooldown</span>
+                            <span className="font-mono text-[11px]">Strategy: Priority Failover with Auto-Cooldown</span>
                           </div>
 
                           <div className="space-y-2">
@@ -855,17 +876,17 @@ export default function GoRouteDashboard() {
                                 key={acc.id}
                                 className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-xs transition ${
                                   acc.disabled
-                                    ? 'border-neutral-200 bg-neutral-100/50 text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900/40'
-                                    : 'border-black/[0.04] bg-white dark:border-white/[0.04] dark:bg-neutral-800/80'
+                                    ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40'
+                                    : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/80 shadow-2xs'
                                 }`}
                               >
                                 <div className="flex items-center gap-3 font-mono">
-                                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-bold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300">
+                                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                                     {idx + 1}
                                   </span>
                                   <div>
-                                    <div className="font-semibold text-neutral-900 dark:text-white">{acc.id}</div>
-                                    <div className="text-[10px] text-neutral-400">
+                                    <div className="font-bold text-slate-900 dark:text-white">{acc.id}</div>
+                                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
                                       Pool: {acc.pool || 'pool1'} {acc.project_id ? `• Project: ${acc.project_id}` : ''}
                                     </div>
                                   </div>
@@ -874,7 +895,7 @@ export default function GoRouteDashboard() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => handleTestPing(p.id, acc.id)}
-                                    className="rounded-lg border border-black/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-neutral-100 dark:border-white/[0.08] dark:hover:bg-neutral-700"
+                                    className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                                   >
                                     Ping
                                   </button>

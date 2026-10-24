@@ -1,35 +1,37 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
-    --bg-base: #F4F3ED;
+    --bg-base: #F8FAFC;
     --bg-surface: #FFFFFF;
     --bg-card: #FFFFFF;
-    --bg-hover: #ECEAE2;
-    --border-color: #E2E0D5;
-    --border-subtle: #ECE9DE;
-    --text-main: #141518;
-    --text-muted: #66655E;
-    --text-dim: #98968D;
-    --accent: #C93D2A;
-    --accent-hover: #B33423;
-    --success: #15803D;
-    --warning: #B45309;
+    --bg-hover: #F1F5F9;
+    --border-color: #E2E8F0;
+    --border-subtle: #F1F5F9;
+    --text-main: #0F172A;
+    --text-muted: #475569;
+    --text-dim: #94A3B8;
+    --accent: #E11D48;
+    --accent-hover: #BE123C;
+    --success: #16A34A;
+    --warning: #D97706;
     --danger: #DC2626;
   }
 
   .dark {
-    --bg-base: #0F1013;
-    --bg-surface: #17181D;
-    --bg-card: #1A1B22;
-    --bg-hover: #23252E;
-    --border-color: #272933;
-    --border-subtle: #1F2028;
-    --text-main: #F4F4F6;
-    --text-muted: #9597A1;
-    --text-dim: #636570;
-    --accent: #E24B38;
-    --accent-hover: #F05E4C;
+    --bg-base: #0B0F17;
+    --bg-surface: #111827;
+    --bg-card: #111827;
+    --bg-hover: #1E293B;
+    --border-color: #1F2937;
+    --border-subtle: #192237;
+    --text-main: #F8FAFC;
+    --text-muted: #94A3B8;
+    --text-dim: #64748B;
+    --accent: #F43F5E;
+    --accent-hover: #FB7185;
     --success: #22C55E;
     --warning: #F59E0B;
     --danger: #EF4444;
@@ -45,38 +47,26 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
-    letter-spacing: -0.01em;
   }
 }
 
-/* Glassmorphism & Liquid Glass */
-.liquid-glass {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-
+/* Glassmorphism & Cards */
 .liquid-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.025), 0 6px 16px -4px rgba(0, 0, 0, 0.015);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
 }
 
 .dark .liquid-card {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 6px 16px -4px rgba(0, 0, 0, 0.3);
+  background: #111827;
+  border: 1px solid #1F2937;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
 }
 
 .liquid-card:hover {
-  border-color: rgba(201, 61, 42, 0.35);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px -2px rgba(201, 61, 42, 0.06);
-}
-
-.dark .liquid-card:hover {
-  border-color: rgba(226, 75, 56, 0.45);
-  box-shadow: 0 4px 20px -2px rgba(226, 75, 56, 0.12);
+  border-color: rgba(244, 63, 94, 0.4);
 }
 
 /* Three-Layer Background: Ambient Aurora Mesh */
