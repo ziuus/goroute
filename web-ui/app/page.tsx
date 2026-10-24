@@ -3,8 +3,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Activity,
-  Layers,
+  Globe,
   Cpu,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
+  Lock,
+  ArrowLeft,
+  Layers,
+  Cloud,
   Shield,
   Zap,
   Terminal,
@@ -65,39 +72,53 @@ interface Provider {
   };
 }
 
+function ProviderBadgeIcon({ id, className = "h-4 w-4" }: { id: string; className?: string }) {
+  if (id.includes('antigravity')) return <Zap className={className} />;
+  if (id.includes('kiro')) return <Cloud className={className} />;
+  if (id.includes('codex')) return <Terminal className={className} />;
+  if (id.includes('copilot')) return <Layers className={className} />;
+  if (id.includes('cursor')) return <Cpu className={className} />;
+  if (id.includes('deepseek')) return <Database className={className} />;
+  if (id.includes('openai')) return <Sparkles className={className} />;
+  if (id.includes('anthropic')) return <Cpu className={className} />;
+  if (id.includes('gemini')) return <Sparkles className={className} />;
+  if (id.includes('groq')) return <Zap className={className} />;
+  return <Server className={className} />;
+}
+
 const PROVIDER_TEMPLATES = [
-  { id: 'anthropic', name: 'Anthropic Direct', baseUrl: 'https://api.anthropic.com/v1', type: 'openai', icon: '🧠', hint: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet, Haiku 3.5' },
-  { id: 'openai', name: 'OpenAI Direct', baseUrl: 'https://api.openai.com/v1', type: 'openai', icon: '🤖', hint: 'GPT-4o, o3-mini, o1, GPT-4-turbo' },
-  { id: 'gemini', name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', type: 'openai', icon: '✨', hint: 'Gemini 2.5 Flash, Gemini 2.0 Pro, Gemini 1.5' },
-  { id: 'deepseek', name: 'DeepSeek Direct', baseUrl: 'https://api.deepseek.com/v1', type: 'openai', icon: '🐳', hint: 'DeepSeek V3 671B, DeepSeek R1 Reasoning' },
-  { id: 'groq', name: 'Groq LPU', baseUrl: 'https://api.groq.com/openai/v1', type: 'openai', icon: '⚡', hint: 'Ultra-fast LPU inference (Llama 3.3 70B, Mixtral)' },
-  { id: 'nvidia', name: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', type: 'openai', icon: '🟢', hint: 'NVIDIA NIM enterprise microservices & open models' },
-  { id: 'xai', name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1', type: 'openai', icon: '🌌', hint: 'Grok 2, Grok 3, Grok Vision' },
-  { id: 'mistral', name: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', type: 'openai', icon: '🌪️', hint: 'Mistral Large 2, Codestral 2501, Pixtral' },
-  { id: 'together', name: 'Together AI', baseUrl: 'https://api.together.xyz/v1', type: 'openai', icon: '🤝', hint: 'Fast cloud hosting for open-source AI models' },
-  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', type: 'openai', icon: '🌐', hint: 'Universal LLM aggregator with 200+ models' },
-  { id: 'perplexity', name: 'Perplexity AI', baseUrl: 'https://api.perplexity.ai', type: 'openai', icon: '🔍', hint: 'Sonar Reasoning, Sonar Pro web-grounded models' },
-  { id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', type: 'openai', icon: '💻', hint: 'Wafer-scale engine with world-record generation speed' },
-  { id: 'sambanova', name: 'SambaNova', baseUrl: 'https://api.sambanova.ai/v1', type: 'openai', icon: '🚀', hint: 'Reconfigurable dataflow unit high-speed inference' },
-  { id: 'hyperbolic', name: 'Hyperbolic', baseUrl: 'https://api.hyperbolic.xyz/v1', type: 'openai', icon: '⚡', hint: 'Decentralized high-throughput compute for open LLMs' },
-  { id: 'fireworks', name: 'Fireworks AI', baseUrl: 'https://api.fireworks.ai/inference/v1', type: 'openai', icon: '🎆', hint: 'Production-ready open-source model inference' },
-  { id: 'cohere', name: 'Cohere', baseUrl: 'https://api.cohere.com/v2', type: 'openai', icon: '🏢', hint: 'Command R+, Command R enterprise models' },
-  { id: 'ollama', name: 'Ollama (Local)', baseUrl: 'http://localhost:11434/v1', type: 'openai', icon: '🦙', hint: 'Zero-config local offline models on port 11434' },
-  { id: 'lmstudio', name: 'LM Studio (Local)', baseUrl: 'http://localhost:1234/v1', type: 'openai', icon: '🖥️', hint: 'Desktop local server running on port 1234' },
-  { id: 'vllm', name: 'vLLM Engine', baseUrl: 'http://localhost:8000/v1', type: 'openai', icon: '⚙️', hint: 'PagedAttention high-throughput self-hosted server' },
-  { id: 'localai', name: 'LocalAI', baseUrl: 'http://localhost:8080/v1', type: 'openai', icon: '🏠', hint: 'Drop-in self-hosted OpenAI alternative' },
-  { id: 'sglang', name: 'SGLang Server', baseUrl: 'http://localhost:30000/v1', type: 'openai', icon: '🏎️', hint: 'High-speed serving for structured generation' },
-  { id: 'kiro', name: 'AWS Q (Kiro)', baseUrl: 'https://codewhisperer.us-east-1.amazonaws.com', type: 'kiro', icon: '☁️', hint: 'AWS Builder ID OAuth multi-account pool' },
-  { id: 'antigravity', name: 'Google Cloud Code', baseUrl: '', type: 'antigravity', icon: '⚡', hint: 'Google Cloud Code Assist OAuth multi-account pool' },
-  { id: 'codex', name: 'OpenAI Codex CLI', baseUrl: '', type: 'codex', icon: '💻', hint: 'OpenAI Codex CLI OAuth session credentials' },
-  { id: 'copilot', name: 'GitHub Copilot', baseUrl: 'https://api.githubcopilot.com', type: 'copilot', icon: '🐙', hint: 'GitHub Copilot CLI token integration' },
-  { id: 'cursor', name: 'Cursor', baseUrl: 'https://api2.cursor.sh', type: 'cursor', icon: '🖱️', hint: 'Cursor editor auth token integration' },
-  { id: 'custom-openai', name: 'Custom OpenAI-Compatible', baseUrl: '', type: 'openai', icon: '🔌', hint: 'Any custom upstream LLM API endpoint' },
+  { id: 'anthropic', name: 'Anthropic Direct', baseUrl: 'https://api.anthropic.com/v1', type: 'openai', category: 'popular', hint: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet, Haiku 3.5' },
+  { id: 'openai', name: 'OpenAI Direct', baseUrl: 'https://api.openai.com/v1', type: 'openai', category: 'popular', hint: 'GPT-4o, o3-mini, o1, GPT-4-turbo' },
+  { id: 'gemini', name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', type: 'openai', category: 'popular', hint: 'Gemini 2.5 Flash, Gemini 2.0 Pro, Gemini 1.5' },
+  { id: 'deepseek', name: 'DeepSeek Direct', baseUrl: 'https://api.deepseek.com/v1', type: 'openai', category: 'popular', hint: 'DeepSeek V3 671B, DeepSeek R1 Reasoning' },
+  { id: 'groq', name: 'Groq LPU', baseUrl: 'https://api.groq.com/openai/v1', type: 'openai', category: 'popular', hint: 'Ultra-fast LPU inference (Llama 3.3 70B, Mixtral)' },
+  { id: 'nvidia', name: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', type: 'openai', category: 'popular', hint: 'NVIDIA NIM enterprise microservices & open models' },
+  { id: 'xai', name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1', type: 'openai', category: 'popular', hint: 'Grok 2, Grok 3, Grok Vision' },
+  { id: 'mistral', name: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', type: 'openai', category: 'popular', hint: 'Mistral Large 2, Codestral 2501, Pixtral' },
+  { id: 'together', name: 'Together AI', baseUrl: 'https://api.together.xyz/v1', type: 'openai', category: 'popular', hint: 'Fast cloud hosting for open-source AI models' },
+  { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', type: 'openai', category: 'popular', hint: 'Universal LLM aggregator with 200+ models' },
+  { id: 'perplexity', name: 'Perplexity AI', baseUrl: 'https://api.perplexity.ai', type: 'openai', category: 'popular', hint: 'Sonar Reasoning, Sonar Pro web-grounded models' },
+  { id: 'cerebras', name: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', type: 'openai', category: 'cloud', hint: 'Wafer-scale engine with world-record generation speed' },
+  { id: 'sambanova', name: 'SambaNova', baseUrl: 'https://api.sambanova.ai/v1', type: 'openai', category: 'cloud', hint: 'Reconfigurable dataflow unit high-speed inference' },
+  { id: 'hyperbolic', name: 'Hyperbolic', baseUrl: 'https://api.hyperbolic.xyz/v1', type: 'openai', category: 'cloud', hint: 'Decentralized high-throughput compute for open LLMs' },
+  { id: 'fireworks', name: 'Fireworks AI', baseUrl: 'https://api.fireworks.ai/inference/v1', type: 'openai', category: 'cloud', hint: 'Production-ready open-source model inference' },
+  { id: 'cohere', name: 'Cohere', baseUrl: 'https://api.cohere.com/v2', type: 'openai', category: 'cloud', hint: 'Command R+, Command R enterprise models' },
+  { id: 'ollama', name: 'Ollama (Local)', baseUrl: 'http://localhost:11434/v1', type: 'openai', category: 'local', hint: 'Zero-config local offline models on port 11434' },
+  { id: 'lmstudio', name: 'LM Studio (Local)', baseUrl: 'http://localhost:1234/v1', type: 'openai', category: 'local', hint: 'Desktop local server running on port 1234' },
+  { id: 'vllm', name: 'vLLM Engine', baseUrl: 'http://localhost:8000/v1', type: 'openai', category: 'local', hint: 'PagedAttention high-throughput self-hosted server' },
+  { id: 'localai', name: 'LocalAI', baseUrl: 'http://localhost:8080/v1', type: 'openai', category: 'local', hint: 'Drop-in self-hosted OpenAI alternative' },
+  { id: 'sglang', name: 'SGLang Server', baseUrl: 'http://localhost:30000/v1', type: 'openai', category: 'local', hint: 'High-speed serving for structured generation' },
+  { id: 'kiro', name: 'AWS Q (Kiro)', baseUrl: 'https://codewhisperer.us-east-1.amazonaws.com', type: 'kiro', category: 'oauth', hint: 'AWS Builder ID OAuth multi-account pool' },
+  { id: 'antigravity', name: 'Google Cloud Code (Antigravity)', baseUrl: '', type: 'antigravity', category: 'oauth', hint: 'Google Cloud Code Assist OAuth multi-account pool' },
+  { id: 'codex', name: 'OpenAI Codex CLI', baseUrl: '', type: 'codex', category: 'oauth', hint: 'OpenAI Codex CLI OAuth session credentials' },
+  { id: 'copilot', name: 'GitHub Copilot', baseUrl: 'https://api.githubcopilot.com', type: 'copilot', category: 'oauth', hint: 'GitHub Copilot CLI token integration' },
+  { id: 'cursor', name: 'Cursor', baseUrl: 'https://api2.cursor.sh', type: 'cursor', category: 'oauth', hint: 'Cursor editor auth token integration' },
+  { id: 'custom-openai', name: 'Custom OpenAI-Compatible', baseUrl: '', type: 'openai', category: 'custom', hint: 'Any custom upstream LLM API endpoint' },
 ];
 
 export default function GoRouteDashboard() {
   const [darkMode, setDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'providers' | 'combos' | 'catalog' | 'quota' | 'traffic' | 'fleet' | 'settings' | 'playground'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'providers' | 'connect-wizard' | 'combos' | 'catalog' | 'quota' | 'traffic' | 'fleet' | 'settings' | 'playground'>('overview');
   
   // Data state
   const [topology, setTopology] = useState<any>(null);
@@ -125,6 +146,12 @@ export default function GoRouteDashboard() {
 
   // Add Provider Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [wizardStep, setWizardStep] = useState<number>(1);
+  const [wizardCategory, setWizardCategory] = useState<string>('all');
+  const [wizardSearch, setWizardSearch] = useState<string>('');
+  const [wizardTestResult, setWizardTestResult] = useState<any>(null);
+  const [testingConnection, setTestingConnection] = useState<boolean>(false);
+
   const [selectedTemplate, setSelectedTemplate] = useState<any>(PROVIDER_TEMPLATES[0]);
   const [addProvId, setAddProvId] = useState('');
   const [addBaseUrl, setAddBaseUrl] = useState('');
@@ -214,20 +241,20 @@ export default function GoRouteDashboard() {
   };
 
   const handleTestPing = async (providerId: string, accountId?: string) => {
-    showToast(`⚡ Testing ping latency for ${providerId}...`);
+    showToast(`Testing ping latency for ${providerId}...`);
     try {
       const url = accountId
         ? `/api/providers/${providerId}/accounts/${accountId}/test`
         : `/api/providers/${providerId}/test`;
       const res = await fetch(url, { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok' || res.success) {
-        showToast(`✅ ${providerId} latency: ${res.latency_ms || res.latencyMs || 22}ms`);
+        showToast(`${providerId} latency: ${res.latency_ms || res.latencyMs || 22}ms`);
       } else {
-        showToast(`❌ ${providerId} test failed: ${res.error || 'Unknown error'}`);
+        showToast(`${providerId} test failed: ${res.error || 'Unknown error'}`);
       }
       fetchAllData();
     } catch (e: any) {
-      showToast(`❌ Test error: ${e.message}`);
+      showToast(`Test error: ${e.message}`);
     }
   };
 
@@ -248,7 +275,7 @@ export default function GoRouteDashboard() {
     try {
       const res = await fetch(`/api/providers/${providerId}/accounts/${accountId}`, { method: 'DELETE' }).then(r => r.json());
       if (res.status === 'ok' || res.ok) {
-        showToast(`✅ Account ${accountId} deleted`);
+        showToast(`Account ${accountId} deleted`);
         fetchAllData();
       }
     } catch (e: any) {
@@ -261,7 +288,7 @@ export default function GoRouteDashboard() {
     try {
       const res = await fetch(`/api/combos/${comboName}`, { method: 'DELETE' }).then(r => r.json());
       if (res.status === 'ok' || res.ok) {
-        showToast(`✅ Combo ${comboName} deleted`);
+        showToast(`Combo ${comboName} deleted`);
         fetchAllData();
       }
     } catch (e: any) {
@@ -270,55 +297,55 @@ export default function GoRouteDashboard() {
   };
 
   const handleSyncFromOmniRoute = async () => {
-    showToast('🔄 Synchronizing all accounts and credentials from OmniRoute...');
+    showToast('Synchronizing all accounts and credentials from OmniRoute...');
     try {
       const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok') {
-        showToast(`✅ Synced! Imported ${res.result?.accounts_imported || 0} accounts, ${res.result?.combos_imported || 0} combos`);
+        showToast(`Synced! Imported ${res.result?.accounts_imported || 0} accounts, ${res.result?.combos_imported || 0} combos`);
         fetchAllData();
       } else {
-        showToast(`❌ Sync error: ${res.error || 'Failed'}`);
+        showToast(`Sync error: ${res.error || 'Failed'}`);
       }
     } catch (e: any) {
-      showToast(`❌ Sync error: ${e.message}`);
+      showToast(`Sync error: ${e.message}`);
     }
   };
 
   const handleImportLocalAntigravity = async () => {
-    showToast('⚡ Discovering locally logged-in Antigravity accounts from CLI & IDE...');
+    showToast('Discovering locally logged-in Antigravity accounts from CLI & IDE...');
     try {
       const res = await fetch('/api/providers/import-antigravity', { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok') {
-        showToast(`✅ ${res.message || 'Imported local Antigravity accounts!'}`);
+        showToast(`${res.message || 'Imported local Antigravity accounts!'}`);
         fetchAllData();
         return true;
       } else {
-        showToast(`❌ Import error: ${res.error || 'Failed'}`);
+        showToast(`Import error: ${res.error || 'Failed'}`);
         return false;
       }
     } catch (e: any) {
-      showToast(`❌ Import error: ${e.message}`);
+      showToast(`Import error: ${e.message}`);
       return false;
     }
   };
 
   const handleImportLocalProvider = async (providerType: string) => {
-    showToast(`⚡ Importing local ${providerType} credentials...`);
+    showToast(`Importing local ${providerType} credentials...`);
     try {
       const endpoint = providerType === 'antigravity'
         ? '/api/providers/import-antigravity'
         : `/api/providers/import-${providerType}`;
       const res = await fetch(endpoint, { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok') {
-        showToast(`✅ ${res.message || `Successfully imported ${providerType}!`}`);
+        showToast(`${res.message || `Successfully imported ${providerType}!`}`);
         fetchAllData();
         return true;
       } else {
-        showToast(`❌ Import error: ${res.error || 'Failed'}`);
+        showToast(`Import error: ${res.error || 'Failed'}`);
         return false;
       }
     } catch (e: any) {
-      showToast(`❌ Import error: ${e.message}`);
+      showToast(`Import error: ${e.message}`);
       return false;
     }
   };
@@ -327,7 +354,7 @@ export default function GoRouteDashboard() {
     try {
       const res = await fetch('/api/resilience/reset', { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok') {
-        showToast('✅ All model and provider cooldowns reset to healthy!');
+        showToast('All model and provider cooldowns reset to healthy!');
         fetchAllData();
       }
     } catch (e: any) {
@@ -336,32 +363,32 @@ export default function GoRouteDashboard() {
   };
 
   const handleReplayLog = async (logId: string) => {
-    showToast(`🔄 Replaying request ${logId}...`);
+    showToast(`Replaying request ${logId}...`);
     try {
       const res = await fetch(`/api/logs/${logId}/replay`, { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok' || res.success) {
-        showToast(`✅ Request replayed successfully!`);
+        showToast(`Request replayed successfully!`);
       } else {
-        showToast(`❌ Replay error: ${res.error || 'Failed'}`);
+        showToast(`Replay error: ${res.error || 'Failed'}`);
       }
       fetchAllData();
     } catch (e: any) {
-      showToast(`❌ Network error: ${e.message}`);
+      showToast(`Network error: ${e.message}`);
     }
   };
 
   const handleConfigureCli = async (toolId: string) => {
-    showToast(`⚙️ Configuring ${toolId} to use GoRoute (:8128)...`);
+    showToast(`Configuring ${toolId} to use GoRoute (:8128)...`);
     try {
       const res = await fetch(`/api/cli-agents/${toolId}/configure`, { method: 'POST' }).then(r => r.json());
       if (res.status === 'ok' || res.success) {
-        showToast(`✅ ${toolId} configured cleanly!`);
+        showToast(`${toolId} configured cleanly!`);
         fetchAllData();
       } else {
-        showToast(`❌ Config error: ${res.error || 'Failed'}`);
+        showToast(`Config error: ${res.error || 'Failed'}`);
       }
     } catch (e: any) {
-      showToast(`❌ Error: ${e.message}`);
+      showToast(`Error: ${e.message}`);
     }
   };
 
@@ -432,8 +459,8 @@ export default function GoRouteDashboard() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-6 py-3.5 backdrop-blur-md dark:border-slate-800 dark:bg-[#0B0F17]/95">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-600 text-xs font-bold text-white shadow-xs">
-              ⚡
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-600 text-white shadow-xs">
+              <Zap className="h-4 w-4 fill-white" />
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-white uppercase">GoRoute</span>
@@ -473,14 +500,14 @@ export default function GoRouteDashboard() {
               </button>
 
               <button
+                type="button"
                 onClick={() => {
-                  setSelectedTemplate(PROVIDER_TEMPLATES[0]);
-                  setAddProvId('anthropic');
-                  setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
-                  setShowAddModal(true);
+                  setWizardStep(1);
+                  setActiveTab('connect-wizard');
                 }}
                 className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-rose-700 active:scale-98"
               >
+                <Plus className="h-3.5 w-3.5" />
                 <span>Connect Provider</span>
                 <span className="font-mono text-xs">↗</span>
               </button>
@@ -733,7 +760,7 @@ export default function GoRouteDashboard() {
                             : 'bg-rose-600 text-white hover:bg-rose-700'
                         }`}
                       >
-                        <span>{agent.configured ? 'Connected ✓' : 'Connect'}</span>
+                        <span>{agent.configured ? 'Connected' : 'Connect'}</span>
                         {!agent.configured && <span className="font-mono text-[10px]">↗</span>}
                       </button>
                     </div>
@@ -752,6 +779,530 @@ export default function GoRouteDashboard() {
         )}
 
         {/* TAB: PROVIDERS & MULTI-ACCOUNT MANAGER */}
+                {/* TAB: DEDICATED CONNECT PROVIDER ONBOARDING WORKFLOW */}
+        {activeTab === 'connect-wizard' && (
+          <div className="space-y-8 animate-in fade-in duration-200">
+            {/* Top Navigation & Breadcrumbs */}
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('providers')}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div>
+                  <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">▪ ONBOARDING</span>
+                    <span>/</span>
+                    <span>CONNECT UPSTREAM PROVIDER</span>
+                  </div>
+                  <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                    Provider Connection Studio
+                  </h1>
+                </div>
+              </div>
+
+              {/* Step indicator */}
+              <div className="flex items-center gap-2">
+                {[
+                  { step: 1, label: 'Select' },
+                  { step: 2, label: 'Configure' },
+                  { step: 3, label: 'Verify' },
+                ].map(s => {
+                  const isCurrent = wizardStep === s.step;
+                  const isPast = wizardStep > s.step;
+                  return (
+                    <div
+                      key={s.step}
+                      className={
+                        isCurrent
+                          ? 'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border border-rose-500/30 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-300'
+                          : isPast
+                          ? 'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300'
+                          : 'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border border-slate-200 bg-white text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500'
+                      }
+                    >
+                      {isPast ? <CheckCircle className="h-3.5 w-3.5" /> : <span className="font-mono text-[11px]">{s.step}.</span>}
+                      <span>{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* STEP 1: SELECT PROVIDER */}
+            {wizardStep === 1 && (
+              <div className="space-y-6">
+                {/* 1-Click Fast Track Card */}
+                <div className="rounded-2xl border border-rose-200 bg-linear-to-br from-rose-50/60 to-orange-50/30 p-6 dark:border-rose-950/50 dark:from-rose-950/20 dark:to-orange-950/10 shadow-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="max-w-xl">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-md bg-rose-600 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-white">Fast Track</span>
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">One-Click Local System Discovery</h3>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                        Instantly scan and link authenticated sessions already present in your terminal and editor directories:
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={handleImportLocalAntigravity}
+                        className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
+                      >
+                        <Zap className="h-3.5 w-3.5 text-rose-500" />
+                        <span>Import Antigravity</span>
+                        <span className="font-mono text-xs">↗</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => { await handleImportLocalProvider('kiro'); }}
+                        className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <Cloud className="h-3.5 w-3.5 text-sky-500" />
+                        <span>Import Kiro AWS</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => { await handleImportLocalProvider('codex'); }}
+                        className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <Terminal className="h-3.5 w-3.5 text-emerald-500" />
+                        <span>Import Codex</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSyncFromOmniRoute}
+                        className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-800 shadow-xs transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
+                        <span>Sync OmniRoute</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      { id: 'all', label: 'All Providers' },
+                      { id: 'popular', label: 'Proprietary Clouds' },
+                      { id: 'oauth', label: 'OAuth & Subscriptions' },
+                      { id: 'local', label: 'Local & Self-Hosted' },
+                      { id: 'custom', label: 'Custom Endpoint' },
+                    ].map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setWizardCategory(cat.id)}
+                        className={
+                          wizardCategory === cat.id
+                            ? 'rounded-lg px-3 py-1.5 text-xs font-semibold transition bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                            : 'rounded-lg px-3 py-1.5 text-xs font-semibold transition border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800'
+                        }
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Search catalog..."
+                      value={wizardSearch}
+                      onChange={e => setWizardSearch(e.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Provider Grid */}
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {PROVIDER_TEMPLATES
+                    .filter(t => {
+                      if (wizardCategory !== 'all' && t.category !== wizardCategory) return false;
+                      if (!wizardSearch) return true;
+                      const q = wizardSearch.toLowerCase();
+                      return t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q) || t.hint.toLowerCase().includes(q);
+                    })
+                    .map(t => {
+                      const isSelected = selectedTemplate.id === t.id;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => {
+                            setSelectedTemplate(t);
+                            setAddProvId(t.id);
+                            setAddBaseUrl(t.baseUrl);
+                            setWizardStep(2);
+                          }}
+                          className={
+                            isSelected
+                              ? 'group relative flex cursor-pointer flex-col justify-between rounded-xl border p-5 transition hover:shadow-md border-rose-600 bg-rose-50/40 dark:border-rose-500 dark:bg-rose-950/20'
+                              : 'group relative flex cursor-pointer flex-col justify-between rounded-xl border p-5 transition hover:shadow-md border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'
+                          }
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-800 transition group-hover:border-rose-400 group-hover:text-rose-600 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                                  <ProviderBadgeIcon id={t.id} className="h-5 w-5" />
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">{t.name}</h4>
+                                  <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">{t.id}</span>
+                                </div>
+                              </div>
+                              <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] uppercase text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                                {t.type}
+                              </span>
+                            </div>
+
+                            <p className="mt-3 text-xs leading-relaxed text-slate-600 dark:text-slate-400 line-clamp-2">
+                              {t.hint}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800/80">
+                            <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                              {t.type === 'antigravity' || t.type === 'kiro' || t.type === 'codex' ? 'OAuth Session' : 'API Key Auth'}
+                            </span>
+                            <span className="flex items-center gap-1 text-xs font-semibold text-rose-600 transition group-hover:translate-x-0.5 dark:text-rose-400">
+                              <span>Configure</span>
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* STEP 2: CONFIGURE PROVIDER */}
+            {wizardStep === 2 && (
+              <div className="mx-auto max-w-2xl space-y-6">
+                {/* Header card */}
+                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-800 dark:text-white">
+                      <ProviderBadgeIcon id={selectedTemplate.id} className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">{selectedTemplate.name}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Configure authentication parameters and endpoint routing</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWizardStep(1)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    Change Provider
+                  </button>
+                </div>
+
+                {/* Form fields */}
+                <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 shadow-xs space-y-5">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      Internal Provider ID
+                    </label>
+                    <input
+                      type="text"
+                      value={addProvId}
+                      onChange={e => setAddProvId(e.target.value)}
+                      className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white p-2.5 font-mono text-xs outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                      placeholder="e.g. anthropic-primary"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                      Unique identifier used in combo routes and client virtual model targets.
+                    </p>
+                  </div>
+
+                  {/* Standard API Key & BaseURL */}
+                  {selectedTemplate.type !== 'kiro' && selectedTemplate.type !== 'antigravity' && selectedTemplate.type !== 'codex' && selectedTemplate.type !== 'cursor' && selectedTemplate.type !== 'copilot' && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                          Base API URL
+                        </label>
+                        <input
+                          type="text"
+                          value={addBaseUrl}
+                          onChange={e => setAddBaseUrl(e.target.value)}
+                          className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white p-2.5 font-mono text-xs outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                          placeholder="https://api.openai.com/v1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                          API Key
+                        </label>
+                        <input
+                          type="password"
+                          value={addApiKey}
+                          onChange={e => setAddApiKey(e.target.value)}
+                          className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white p-2.5 font-mono text-xs outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                          placeholder="sk-... or provider secret token"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Antigravity Special Workflows */}
+                  {selectedTemplate.type === 'antigravity' && (
+                    <div className="space-y-4 pt-2">
+                      <div className="rounded-xl border border-rose-300 bg-rose-50/50 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-600 text-[10px] font-bold text-white">1</span>
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import Local Antigravity (IDE & CLI)</h4>
+                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Recommended</span>
+                            </div>
+                            <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                              Discovers Google Cloud Code Assist tokens from local IDE SQLite db and CLI configs.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleImportLocalAntigravity}
+                            className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-rose-700"
+                          >
+                            <Zap className="h-3.5 w-3.5" />
+                            <span>Run Auto-Import</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-600 text-[10px] font-bold text-white">2</span>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">Manual Refresh Token</h4>
+                        </div>
+                        <input
+                          type="password"
+                          placeholder="1//0g... (Google OAuth refresh token)"
+                          value={addRefreshToken}
+                          onChange={e => setAddRefreshToken(e.target.value)}
+                          className="mt-2.5 w-full rounded-lg border border-slate-200 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Kiro Special Workflows */}
+                  {selectedTemplate.type === 'kiro' && (
+                    <div className="space-y-4 pt-2">
+                      <div className="rounded-xl border border-sky-300 bg-sky-50/50 p-4 dark:border-sky-900/50 dark:bg-sky-950/20">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-[10px] font-bold text-white">1</span>
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">Auto-Import from Kiro CLI & SSO Cache</h4>
+                            </div>
+                            <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                              Reads Builder ID tokens from ~/.aws/sso/cache or Kiro SQLite token stores.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => { await handleImportLocalProvider('kiro'); }}
+                            className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-sky-700"
+                          >
+                            <Cloud className="h-3.5 w-3.5" />
+                            <span>Import Kiro</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-600 text-[10px] font-bold text-white">2</span>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">Manual Refresh Token & Profile ARN</h4>
+                        </div>
+                        <input
+                          type="password"
+                          placeholder="Kiro refresh token..."
+                          value={addRefreshToken}
+                          onChange={e => setAddRefreshToken(e.target.value)}
+                          className="mt-2.5 w-full rounded-lg border border-slate-200 bg-white p-2.5 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-5 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setWizardStep(1)}
+                      className="rounded-lg px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                    >
+                      Back
+                    </button>
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        disabled={testingConnection}
+                        onClick={async () => {
+                          setTestingConnection(true);
+                          setWizardTestResult(null);
+                          try {
+                            const res = await fetch('/api/providers/test-connection', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                provider: addProvId,
+                                type: selectedTemplate.type,
+                                base_url: addBaseUrl,
+                                api_key: addApiKey,
+                                refresh_token: addRefreshToken,
+                              })
+                            }).then(r => r.json());
+                            setWizardTestResult(res);
+                            setWizardStep(3);
+                          } catch (e: any) {
+                            setWizardTestResult({ success: false, error: e.message });
+                            setWizardStep(3);
+                          } finally {
+                            setTestingConnection(false);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <Zap className="h-3.5 w-3.5 text-rose-500" />
+                        <span>{testingConnection ? 'Testing...' : 'Test Connection'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/providers/add', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                id: addProvId,
+                                type: selectedTemplate.type,
+                                base_url: addBaseUrl,
+                                api_key: addApiKey,
+                                refresh_token: addRefreshToken
+                              })
+                            });
+                            if (res.ok) {
+                              showToast('Provider ' + addProvId + ' saved successfully!');
+                              await fetchAllData();
+                              setActiveTab('providers');
+                            } else {
+                              showToast('Save failed');
+                            }
+                          } catch (e: any) {
+                            showToast('Error: ' + String(e.message));
+                          }
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-rose-700"
+                      >
+                        <span>Save & Enable</span>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: VERIFY & FINISH */}
+            {wizardStep === 3 && (
+              <div className="mx-auto max-w-xl space-y-6">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900 shadow-xs">
+                  <div className={
+                    (wizardTestResult?.status === 'ok' || wizardTestResult?.success)
+                      ? 'mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400'
+                      : 'mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-rose-500/20 bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400'
+                  }>
+                    {(wizardTestResult?.status === 'ok' || wizardTestResult?.success) ? (
+                      <CheckCircle className="h-7 w-7" />
+                    ) : (
+                      <XCircle className="h-7 w-7" />
+                    )}
+                  </div>
+
+                  <h3 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
+                    {(wizardTestResult?.status === 'ok' || wizardTestResult?.success) ? 'Connection Verified' : 'Verification Issue Detected'}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {(wizardTestResult?.status === 'ok' || wizardTestResult?.success)
+                      ? 'Successfully validated upstream credentials with ' + String(wizardTestResult?.latency_ms || 24) + 'ms latency.'
+                      : wizardTestResult?.error || 'Failed to authenticate with upstream endpoint.'}
+                  </p>
+
+                  {wizardTestResult?.models && wizardTestResult.models.length > 0 && (
+                    <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-800 dark:bg-slate-800/40">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Discovered Upstream Models ({wizardTestResult.models.length})
+                      </span>
+                      <div className="mt-2 flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                        {wizardTestResult.models.slice(0, 10).map((m: string) => (
+                          <span key={m} className="rounded bg-white px-2 py-0.5 font-mono text-[10px] font-medium text-slate-700 shadow-2xs dark:bg-slate-800 dark:text-slate-300">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setWizardStep(2)}
+                      className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    >
+                      Back to Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/providers/add', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              id: addProvId,
+                              type: selectedTemplate.type,
+                              base_url: addBaseUrl,
+                              api_key: addApiKey,
+                              refresh_token: addRefreshToken
+                            })
+                          });
+                          if (res.ok) {
+                            showToast('Provider ' + addProvId + ' activated!');
+                            await fetchAllData();
+                            setActiveTab('providers');
+                          } else {
+                            showToast('Activation failed');
+                          }
+                        } catch (e: any) {
+                          showToast('Error: ' + String(e.message));
+                        }
+                      }}
+                      className="rounded-lg bg-rose-600 px-5 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-rose-700"
+                    >
+                      Save & Complete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'providers' && (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
@@ -782,11 +1333,10 @@ export default function GoRouteDashboard() {
                   <span>Sync OmniRoute</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
-                    setSelectedTemplate(PROVIDER_TEMPLATES[0]);
-                    setAddProvId('anthropic');
-                    setAddBaseUrl(PROVIDER_TEMPLATES[0].baseUrl);
-                    setShowAddModal(true);
+                    setWizardStep(1);
+                    setActiveTab('connect-wizard');
                   }}
                   className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-rose-700"
                 >
@@ -810,9 +1360,9 @@ export default function GoRouteDashboard() {
                     <div key={p.id} className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs overflow-hidden">
                       <div className="flex flex-wrap items-center justify-between gap-4 p-5">
                         <div className="flex items-center gap-3.5">
-                          <span className="text-xl">
-                            {p.id.includes('antigravity') ? '⚡' : p.id.includes('kiro') ? '☁️' : p.id.includes('codex') ? '💻' : p.id.includes('deepseek') ? '🐳' : '🤖'}
-                          </span>
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                            <ProviderBadgeIcon id={p.id} className="h-4 w-4 text-slate-700 dark:text-slate-300" />
+                          </div>
                           <div>
                             <div className="flex items-center gap-2">
                               <h3 className="font-bold text-slate-900 dark:text-white text-sm">{p.id}</h3>
@@ -1278,7 +1828,7 @@ export default function GoRouteDashboard() {
                           : 'cursor-not-allowed bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 dark:bg-slate-800 dark:text-slate-600 dark:text-slate-400'
                       }`}
                     >
-                      {agent.configured ? 'Connected ✓' : 'Connect to GoRoute'}
+                      {agent.configured ? 'Connected' : 'Connect to GoRoute'}
                     </button>
                   </div>
                 </div>
@@ -1368,7 +1918,7 @@ export default function GoRouteDashboard() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ budget: thinkingBudget })
                         });
-                        if (res.ok) showToast('✅ Thinking budget updated!');
+                        if (res.ok) showToast('Thinking budget updated!');
                       } catch (e: any) {
                         showToast(`Update error: ${e.message}`);
                       }
@@ -1529,7 +2079,7 @@ export default function GoRouteDashboard() {
                         : 'border-[#E2E0D5] bg-white hover:bg-[#FAF9F5] dark:border-[#272933] dark:bg-[#1A1B22]'
                     }`}
                   >
-                    <span className="text-base">{t.icon}</span>
+                    <ProviderBadgeIcon id={t.id} className="h-4 w-4 shrink-0" />
                     <span className="truncate">{t.name}</span>
                   </button>
                 ))}
@@ -1757,14 +2307,14 @@ export default function GoRouteDashboard() {
                       })
                     });
                     if (res.ok) {
-                      showToast(`✅ Provider ${addProvId} connected!`);
+                      showToast(`Provider ${addProvId} connected!`);
                       setShowAddModal(false);
                       fetchAllData();
                     } else {
-                      showToast(`❌ Connection failed`);
+                      showToast(`Connection failed`);
                     }
                   } catch (e: any) {
-                    showToast(`❌ Error: ${e.message}`);
+                    showToast(`Error: ${e.message}`);
                   }
                 }}
                 className="rounded-lg bg-[#C93D2A] px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-[#B33423] transition"
@@ -1887,7 +2437,7 @@ export default function GoRouteDashboard() {
                       })
                     });
                     if (res.ok) {
-                      showToast(`✅ Combo ${newComboName} created!`);
+                      showToast(`Combo ${newComboName} created!`);
                       setShowNewComboModal(false);
                       fetchAllData();
                     }
@@ -1954,7 +2504,7 @@ export default function GoRouteDashboard() {
                       body: JSON.stringify({ alias: newAliasKey, target: newAliasTarget })
                     });
                     if (res.ok) {
-                      showToast(`✅ Alias ${newAliasKey} → ${newAliasTarget} saved!`);
+                      showToast(`Alias ${newAliasKey} → ${newAliasTarget} saved!`);
                       setShowAliasModal(false);
                       fetchAllData();
                     }
