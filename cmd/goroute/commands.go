@@ -23,6 +23,7 @@ import (
 	"github.com/ziuus/goroute/pkg/providers/copilot"
 	"github.com/ziuus/goroute/pkg/providers/cursor"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
+	"github.com/ziuus/goroute/pkg/providers/mistral"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/proxy"
 	"github.com/ziuus/goroute/pkg/quota"
@@ -40,6 +41,50 @@ func defaultPaths() (configPath, storePath string) {
 	home, _ := os.UserHomeDir()
 	baseDir := filepath.Join(home, ".goroute")
 	return filepath.Join(baseDir, "config.yaml"), filepath.Join(baseDir, "vault.json")
+}
+
+func newAPIKeyProvider(pCfg config.ProviderConfig) providers.Provider {
+	var keys []string
+	for _, account := range pCfg.Accounts {
+		if account.APIKey != "" {
+			keys = append(keys, account.APIKey)
+		}
+	}
+	if pCfg.APIKey != "" {
+		keys = append(keys, pCfg.APIKey)
+	}
+
+	baseURL := pCfg.BaseURL
+	if baseURL == "" {
+		if entry := catalog.FindEntry(pCfg.ID); entry != nil && entry.BaseURL != "" {
+			baseURL = entry.BaseURL
+		} else if pCfg.ID == "agentrouter" {
+			baseURL = "https://api.agentrouter.org/v1"
+		} else if pCfg.ID == "xkiro" {
+			baseURL = "https://api.xkiro.com/v1"
+		} else if pCfg.ID == "openai" {
+			baseURL = "https://api.openai.com/v1"
+		}
+	}
+
+	var provider interface {
+		providers.Provider
+		SetAccountKey(string, string)
+	}
+	if pCfg.Type == "mistral" {
+		provider = mistral.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+	} else {
+		provider = openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+	}
+	for _, account := range pCfg.Accounts {
+		if account.APIKey != "" {
+			provider.SetAccountKey(account.ID, account.APIKey)
+		}
+	}
+	if pCfg.APIKey != "" {
+		provider.SetAccountKey(pCfg.ID+"-primary", pCfg.APIKey)
+	}
+	return provider
 }
 
 func openBrowser(url string) {
@@ -86,38 +131,8 @@ func NewServeCmd() *cobra.Command {
 			// Register configured providers
 			for _, pCfg := range cfg.Providers {
 				switch pCfg.Type {
-				case "openai":
-					var keys []string
-					for _, a := range pCfg.Accounts {
-						if a.APIKey != "" {
-							keys = append(keys, a.APIKey)
-						}
-					}
-					if pCfg.APIKey != "" {
-						keys = append(keys, pCfg.APIKey)
-					}
-					baseURL := pCfg.BaseURL
-					if baseURL == "" {
-						if entry := catalog.FindEntry(pCfg.ID); entry != nil && entry.BaseURL != "" {
-							baseURL = entry.BaseURL
-						} else if pCfg.ID == "agentrouter" {
-							baseURL = "https://api.agentrouter.org/v1"
-						} else if pCfg.ID == "xkiro" {
-							baseURL = "https://api.xkiro.com/v1"
-						} else if pCfg.ID == "openai" {
-							baseURL = "https://api.openai.com/v1"
-						}
-					}
-					prov := openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
-					for _, a := range pCfg.Accounts {
-						if a.APIKey != "" {
-							prov.SetAccountKey(a.ID, a.APIKey)
-						}
-					}
-					if pCfg.APIKey != "" {
-						prov.SetAccountKey(pCfg.ID+"-primary", pCfg.APIKey)
-					}
-					r.RegisterProvider(prov)
+				case "openai", "mistral":
+					r.RegisterProvider(newAPIKeyProvider(pCfg))
 				case "antigravity":
 					var accounts []*antigravity.Account
 					for _, a := range pCfg.Accounts {
