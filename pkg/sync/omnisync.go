@@ -262,6 +262,12 @@ func SyncFromOmniRoute(cfgPath string) (*SyncResult, error) {
 				} `json:"models"`
 			}
 			if err := json.Unmarshal([]byte(data), &cData); err == nil && len(cData.Models) > 0 {
+				// Build a set of known configured provider IDs
+				knownProviders := make(map[string]bool)
+				for _, p := range cfg.Providers {
+					knownProviders[p.ID] = true
+				}
+
 				targets := make([]config.ComboTarget, 0, len(cData.Models))
 				for _, m := range cData.Models {
 					prov := m.ProviderID
@@ -269,6 +275,10 @@ func SyncFromOmniRoute(cfgPath string) (*SyncResult, error) {
 						prov = "antigravity"
 					} else if prov == "kr" {
 						prov = "kiro"
+					}
+					// Only include targets pointing to existing, configured providers
+					if !knownProviders[prov] {
+						continue
 					}
 					modelName := m.Model
 					if strings.Contains(modelName, "/") {
@@ -280,13 +290,15 @@ func SyncFromOmniRoute(cfgPath string) (*SyncResult, error) {
 						Model:      modelName,
 					})
 				}
-				addOrUpdateCombo(cfg, config.ComboConfig{
-					Name:     name,
-					Strategy: "failover",
-					Targets:  targets,
-				})
-				res.CombosImported++
-				res.Details = append(res.Details, fmt.Sprintf("Imported combo %s (%d targets)", name, len(targets)))
+				if len(targets) > 0 {
+					addOrUpdateCombo(cfg, config.ComboConfig{
+						Name:     name,
+						Strategy: "failover",
+						Targets:  targets,
+					})
+					res.CombosImported++
+					res.Details = append(res.Details, fmt.Sprintf("Imported combo %s (%d targets)", name, len(targets)))
+				}
 			}
 		}
 	}

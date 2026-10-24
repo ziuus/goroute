@@ -148,36 +148,37 @@ func (s *Scheduler) checkKiroProvider(ctx context.Context, p *kiro.Provider) {
 }
 
 func (s *Scheduler) checkAntigravityProvider(ctx context.Context, p *antigravity.Provider) {
-	// Antigravity check
-	start := time.Now()
-	key := fmt.Sprintf("%s:primary", p.ID())
+	for _, acc := range p.Accounts() {
+		key := fmt.Sprintf("%s:%s", p.ID(), acc.ID)
+		start := time.Now()
 
-	s.mu.Lock()
-	rec, ok := s.healthState[key]
-	if !ok {
-		rec = &AccountHealth{
-			ProviderID: p.ID(),
-			AccountID:  "primary",
+		s.mu.Lock()
+		rec, ok := s.healthState[key]
+		if !ok {
+			rec = &AccountHealth{
+				ProviderID: p.ID(),
+				AccountID:  acc.ID,
+			}
+			s.healthState[key] = rec
 		}
-		s.healthState[key] = rec
-	}
-	s.mu.Unlock()
+		s.mu.Unlock()
 
-	err := p.TestAccount(ctx, "")
-	elapsed := time.Since(start).Milliseconds()
+		err := p.TestAccount(ctx, acc.ID)
+		elapsed := time.Since(start).Milliseconds()
 
-	s.mu.Lock()
-	rec.LastCheck = time.Now()
-	rec.LatencyMs = elapsed
-	if err != nil {
-		rec.Status = "error"
-		rec.LastError = err.Error()
-		log.Printf("[tokens] Proactive check failed for Antigravity account: %v", err)
-	} else {
-		rec.Status = "healthy"
-		rec.LastError = ""
+		s.mu.Lock()
+		rec.LastCheck = time.Now()
+		rec.LatencyMs = elapsed
+		if err != nil {
+			rec.Status = "error"
+			rec.LastError = err.Error()
+			log.Printf("[tokens] Proactive check failed for Antigravity account %s: %v", acc.ID, err)
+		} else {
+			rec.Status = "healthy"
+			rec.LastError = ""
+		}
+		s.mu.Unlock()
 	}
-	s.mu.Unlock()
 }
 
 func (s *Scheduler) ListHealth() []*AccountHealth {

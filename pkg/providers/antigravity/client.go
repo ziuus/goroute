@@ -31,6 +31,10 @@ func (p *Provider) SetStrategy(s string) {
 	p.strategy = s
 }
 
+func (p *Provider) Accounts() []*Account {
+	return p.accounts
+}
+
 func NewProvider(id string, accounts []*Account) *Provider {
 	return &Provider{
 		id:       id,

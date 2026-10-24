@@ -28,6 +28,7 @@ import (
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/store"
+	"github.com/ziuus/goroute/pkg/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -723,6 +724,18 @@ func NewAuthCmd() *cobra.Command {
 				}
 			}
 
+			// 5. Import OmniRoute Vault
+			if target == "omniroute" || target == "all" {
+				res, err := sync.SyncFromOmniRoute(defaultCfg)
+				if err == nil && res != nil {
+					fmt.Printf("✅ Successfully synced from OmniRoute: %d providers, %d accounts, %d combos\n",
+						res.ProvidersImported, res.AccountsImported, res.CombosImported)
+					imported += res.ProvidersImported + res.AccountsImported
+				} else if target == "omniroute" {
+					return fmt.Errorf("failed to import omniroute credentials: %v", err)
+				}
+			}
+
 			if imported == 0 {
 				return fmt.Errorf("no credentials found to import for %s", target)
 			}
@@ -971,6 +984,37 @@ func NewModelsCmd() *cobra.Command {
 				fmt.Printf("• %-30s [%s]\n", m.ID, m.OwnedBy)
 			}
 			return nil
+		},
+	}
+}
+
+func NewSyncCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "sync [target]",
+		Short: "Synchronize accounts, models, and combos from OmniRoute or external vaults",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			source := "omniroute"
+			if len(args) > 0 {
+				source = args[0]
+			}
+			defaultCfg, _ := defaultPaths()
+			if source == "omniroute" {
+				fmt.Println("⚡ Syncing providers, credentials, and combos from OmniRoute SQLite vault...")
+				res, err := sync.SyncFromOmniRoute(defaultCfg)
+				if err != nil {
+					return fmt.Errorf("sync error: %w", err)
+				}
+				fmt.Printf("✅ Sync complete: %d providers, %d accounts, %d combos\n",
+					res.ProvidersImported, res.AccountsImported, res.CombosImported)
+				for _, d := range res.Details {
+					fmt.Printf("   • %s\n", d)
+				}
+				// Signal running server to reload if active
+				_, _ = http.Post("http://127.0.0.1:8128/api/reload", "application/json", nil)
+				return nil
+			}
+			return fmt.Errorf("unknown sync target: %s (supported: omniroute)", source)
 		},
 	}
 }
