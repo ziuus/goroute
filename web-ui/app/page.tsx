@@ -538,10 +538,10 @@ export default function GoRouteDashboard() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`group relative flex items-center gap-1.5 px-3 py-2 text-xs transition ${
+                  className={`group relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-all duration-200 hover:-translate-y-0.5 active:scale-95 ${
                     isActive
-                      ? 'font-bold text-slate-900 dark:text-white'
-                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                      ? 'font-bold text-slate-900 dark:text-white bg-slate-100/80 dark:bg-slate-800/80'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50'
                   }`}
                 >
                   <span className={`font-mono text-[10px] ${isActive ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500 dark:text-slate-500'}`}>
@@ -685,7 +685,7 @@ export default function GoRouteDashboard() {
                   {combos.slice(0, 4).map(c => (
                     <div
                       key={c.name}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 transition hover:border-rose-500/40 dark:border-slate-800 dark:bg-slate-800/40"
+                      className="group flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/50 hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-850 dark:hover:border-rose-500/50"
                     >
                       <div className="flex items-center gap-2.5">
                         <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">{c.name}</span>
@@ -740,7 +740,7 @@ export default function GoRouteDashboard() {
                   {cliAgents.filter(a => a.detected).slice(0, 5).map(agent => (
                     <div
                       key={agent.id}
-                      className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition hover:border-rose-500/40 dark:border-slate-800 dark:bg-slate-800/40"
+                      className="group flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/50 hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-850 dark:hover:border-rose-500/50"
                     >
                       <div>
                         <div className="flex items-center gap-1.5">
@@ -1357,7 +1357,7 @@ export default function GoRouteDashboard() {
                   const pType = p.details?.type || 'openai';
 
                   return (
-                    <div key={p.id} className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs overflow-hidden">
+                    <div key={p.id} className="group rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/40 hover:shadow-md dark:hover:border-rose-500/40 dark:hover:shadow-rose-950/20">
                       <div className="flex flex-wrap items-center justify-between gap-4 p-5">
                         <div className="flex items-center gap-3.5">
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200">
