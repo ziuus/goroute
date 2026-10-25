@@ -106,8 +106,9 @@ func CreateTask(skill, input string) (*storage.A2ATask, error) {
 		return nil, err
 	}
 
-	// Auto-transition to working and completion for synchronous execution
-	go executeTask(task)
+	// Auto-transition to working and completion for synchronous execution in background
+	taskCopy := *task
+	go executeTask(&taskCopy)
 
 	return task, nil
 }

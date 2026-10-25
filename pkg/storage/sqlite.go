@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -34,7 +35,7 @@ type DBStore struct {
 }
 
 var (
-	globalDB   *DBStore
+	globalDB   atomic.Pointer[DBStore]
 	dbInitOnce sync.Once
 )
 
@@ -124,18 +125,18 @@ func InitDB(dbPath string) (*DBStore, error) {
 	}
 
 	store := &DBStore{db: db}
-	globalDB = store
+	globalDB.Store(store)
 	return store, nil
 }
 
 // GetDB returns the initialized global DB store.
 func GetDB() *DBStore {
 	dbInitOnce.Do(func() {
-		if globalDB == nil {
+		if globalDB.Load() == nil {
 			InitDB("")
 		}
 	})
-	return globalDB
+	return globalDB.Load()
 }
 
 // SaveCombo saves or updates a combo in SQLite with ACID guarantee.
