@@ -198,7 +198,14 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 	}
 
 	if combo, ok := r.combos[model]; ok && len(combo.Targets) > 0 {
-		return combo.Targets[0], true
+		ordered := r.orderTargets(combo)
+		for _, t := range ordered {
+			if !resilience.GlobalCooldown.IsCooling(t.ProviderID, t.Model) {
+				return t, true
+			}
+		}
+		// If all are cooling down, return first target per strategy order
+		return ordered[0], true
 	}
 
 	parts := strings.SplitN(model, "/", 2)
@@ -494,18 +501,27 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 		}
 
 		// Upstream target failed (4xx or 5xx): close body, mark cooldown, and cascade!
-		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d, cooling down and trying next target...", target.ProviderID, target.Model, statusCode)
+		var errReason string
+		if body != nil {
+			errBytes, _ := io.ReadAll(io.LimitReader(body, 2048))
+			errReason = string(errBytes)
+			body.Close()
+		}
+		if errReason == "" {
+			errReason = fmt.Sprintf("HTTP %d", statusCode)
+		}
+		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d (%s), cooling down and trying next target...", target.ProviderID, target.Model, statusCode, errReason)
+
 		// For 429 quota exhaustion or 400 schema mismatches, mark cooldown and try next target
 		cooldownDuration := 10 * time.Minute
 		if statusCode == 400 {
 			cooldownDuration = 3 * time.Minute
+		} else if statusCode == 429 && resilience.IsDailyQuotaExhausted(errReason) {
+			cooldownDuration = 1 * time.Hour
 		}
-		resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, fmt.Sprintf("HTTP %d", statusCode), cooldownDuration)
-		if body != nil {
-			body.Close()
-		}
+		resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, errReason, cooldownDuration)
 		lastStatus = statusCode
-		lastErr = fmt.Errorf("target %s/%s returned HTTP %d", target.ProviderID, target.Model, statusCode)
+		lastErr = fmt.Errorf("target %s/%s returned HTTP %d: %s", target.ProviderID, target.Model, statusCode, errReason)
 		// Continue cascade loop to next target!
 		continue
 	}

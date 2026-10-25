@@ -24,6 +24,8 @@ type RequestLog struct {
 	StatusCode      int       `json:"status_code"`
 	DurationMs      int64     `json:"duration_ms"`
 	Tokens          int       `json:"tokens,omitempty"`
+	InputTokens     int       `json:"input_tokens,omitempty"`
+	OutputTokens    int       `json:"output_tokens,omitempty"`
 	Error           string    `json:"error,omitempty"`
 	PromptPreview   string    `json:"prompt_preview,omitempty"`
 	ResponsePreview string    `json:"response_preview,omitempty"`
@@ -66,13 +68,18 @@ func RecordRequest(entry RequestLog) {
 	go func(logEntry RequestLog) {
 		db := storage.GetDB()
 		if db != nil {
+			outTok := logEntry.OutputTokens
+			if outTok == 0 && logEntry.Tokens > 0 {
+				outTok = logEntry.Tokens
+			}
 			_ = db.RecordCall(storage.CallLog{
 				ID:           logEntry.ID,
 				Timestamp:    logEntry.Timestamp,
 				Model:        logEntry.Model,
 				Provider:     logEntry.Provider,
 				AccountID:    logEntry.AccountID,
-				OutputTokens: logEntry.Tokens,
+				InputTokens:  logEntry.InputTokens,
+				OutputTokens: outTok,
 				LatencyMs:    logEntry.DurationMs,
 				StatusCode:   logEntry.StatusCode,
 				ErrorMessage: logEntry.Error,

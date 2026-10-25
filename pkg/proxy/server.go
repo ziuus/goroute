@@ -1708,14 +1708,20 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if statusCode == http.StatusOK && cacheKey != "" {
 			s.cache.Set(cacheKey, consolidated)
 		}
+		inTok := estimateTokensFromMessages(chatReq.Messages)
+		outTok := 10 + (len(consolidated) / 4)
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/chat/completions",
-			Model:      chatReq.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
+			ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:    start,
+			Endpoint:     "/v1/chat/completions",
+			Model:        chatReq.Model,
+			StatusCode:   statusCode,
+			DurationMs:   time.Since(start).Milliseconds(),
+			InputTokens:  inTok,
+			OutputTokens: outTok,
+			Tokens:       inTok + outTok,
 		})
+		pool.GlobalPool.RecordUsage(poolHeader, "", int64(inTok+outTok))
 		return
 	}
 
@@ -1727,9 +1733,11 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 		flusher, ok := w.(http.Flusher)
 		buf := make([]byte, 4096)
+		totalBytes := 0
 		for {
 			n, readErr := body.Read(buf)
 			if n > 0 {
+				totalBytes += n
 				w.Write(buf[:n])
 				if ok {
 					flusher.Flush()
@@ -1739,14 +1747,23 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+		inTok := estimateTokensFromMessages(chatReq.Messages)
+		outTok := totalBytes / 8
+		if outTok < 1 {
+			outTok = 1
+		}
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/chat/completions",
-			Model:      chatReq.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
+			ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:    start,
+			Endpoint:     "/v1/chat/completions",
+			Model:        chatReq.Model,
+			StatusCode:   statusCode,
+			DurationMs:   time.Since(start).Milliseconds(),
+			InputTokens:  inTok,
+			OutputTokens: outTok,
+			Tokens:       inTok + outTok,
 		})
+		pool.GlobalPool.RecordUsage(poolHeader, "", int64(inTok+outTok))
 		return
 	}
 
@@ -1761,14 +1778,29 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		s.cache.Set(cacheKey, respBytes)
 	}
 
+	pTok, cTok := parseUsageFromJSON(respBytes)
+	if pTok == 0 {
+		pTok = estimateTokensFromMessages(chatReq.Messages)
+	}
+	if cTok == 0 {
+		cTok = len(respBytes) / 8
+		if cTok < 1 {
+			cTok = 1
+		}
+	}
+
 	RecordRequest(RequestLog{
-		ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-		Timestamp:  start,
-		Endpoint:   "/v1/chat/completions",
-		Model:      chatReq.Model,
-		StatusCode: statusCode,
-		DurationMs: time.Since(start).Milliseconds(),
+		ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		Timestamp:    start,
+		Endpoint:     "/v1/chat/completions",
+		Model:        chatReq.Model,
+		StatusCode:   statusCode,
+		DurationMs:   time.Since(start).Milliseconds(),
+		InputTokens:  pTok,
+		OutputTokens: cTok,
+		Tokens:       pTok + cTok,
 	})
+	pool.GlobalPool.RecordUsage(poolHeader, "", int64(pTok+cTok))
 
 	// If client requested stream: true but upstream returned non-streaming JSON:
 	// Synthesize standard OpenAI SSE chunk stream so client parser doesn't crash
@@ -4807,6 +4839,54 @@ func writeSynthesizedSSE(w io.Writer, flusher http.Flusher, respBytes []byte, mo
 	if flusher != nil {
 		flusher.Flush()
 	}
+}
+
+func estimateTokensFromMessages(messages []providers.ChatMessage) int {
+	totalChars := 0
+	for _, m := range messages {
+		totalChars += len(m.Role)
+		switch v := m.Content.(type) {
+		case string:
+			totalChars += len(v)
+		case []interface{}:
+			for _, item := range v {
+				if block, ok := item.(map[string]interface{}); ok {
+					if txt, ok := block["text"].(string); ok {
+						totalChars += len(txt)
+					}
+				}
+			}
+		}
+	}
+	tokens := totalChars / 4
+	if tokens < 1 {
+		tokens = 1
+	}
+	return tokens
+}
+
+func parseUsageFromJSON(body []byte) (promptTokens, completionTokens int) {
+	var resp struct {
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+			InputTokens      int `json:"input_tokens"`
+			OutputTokens     int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &resp); err == nil {
+		p := resp.Usage.PromptTokens
+		if p == 0 {
+			p = resp.Usage.InputTokens
+		}
+		c := resp.Usage.CompletionTokens
+		if c == 0 {
+			c = resp.Usage.OutputTokens
+		}
+		return p, c
+	}
+	return 0, 0
 }
 
 func (s *Server) handleListCliAgents(w http.ResponseWriter, r *http.Request) {

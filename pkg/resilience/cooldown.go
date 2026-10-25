@@ -1,6 +1,7 @@
 package resilience
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,6 +13,7 @@ type CooldownTarget struct {
 	StatusCode   int       `json:"status_code"`
 	CoolingUntil time.Time `json:"cooling_until"`
 	Attempts     int       `json:"attempts"`
+	Exhausted    bool      `json:"exhausted,omitempty"`
 }
 
 type CooldownManager struct {
@@ -32,8 +34,27 @@ func NewCooldownManager(defaultTTL time.Duration) *CooldownManager {
 	}
 }
 
+// IsDailyQuotaExhausted checks error text for daily quota exhaustion signals
+func IsDailyQuotaExhausted(text string) bool {
+	if text == "" {
+		return false
+	}
+	lower := strings.ToLower(text)
+	return strings.Contains(lower, "today's quota") ||
+		strings.Contains(lower, "daily quota") ||
+		strings.Contains(lower, "try again tomorrow") ||
+		strings.Contains(lower, "quota_exhausted") ||
+		strings.Contains(lower, "exceeded your current quota") ||
+		strings.Contains(lower, "resource_exhausted") ||
+		strings.Contains(lower, "usage limit reached")
+}
+
 func (cm *CooldownManager) MarkCooldown(providerID, model string, statusCode int, reason string, ttl time.Duration) {
-	if ttl <= 0 {
+	exhausted := IsDailyQuotaExhausted(reason)
+	if exhausted {
+		// Daily quota exhausted: lock out for 1 hour instead of transient 10m
+		ttl = 1 * time.Hour
+	} else if ttl <= 0 {
 		ttl = cm.defaultTTL
 	}
 	key := providerID + "/" + model
@@ -52,6 +73,7 @@ func (cm *CooldownManager) MarkCooldown(providerID, model string, statusCode int
 	target.StatusCode = statusCode
 	target.CoolingUntil = time.Now().Add(ttl)
 	target.Attempts++
+	target.Exhausted = exhausted
 }
 
 func (cm *CooldownManager) IsCooling(providerID, model string) bool {
