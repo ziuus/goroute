@@ -15,10 +15,11 @@ import (
 func TestExtendedOmniRouteParitySubsystems(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := tmpDir + "/test_parity.db"
-	_, err := storage.InitDB(dbPath)
+	store, err := storage.InitDB(dbPath)
 	if err != nil {
 		t.Fatalf("failed to init db: %v", err)
 	}
+	defer store.Close()
 
 	r := router.NewRouter()
 	limiter := quota.NewLimiter()
