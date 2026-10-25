@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import CustomCursor from './CustomCursor';
 
 export const metadata: Metadata = {
   title: 'GoRoute — Universal LLM Gateway (Go + Rust)',
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased selection:bg-blue-500/20 selection:text-blue-600">
+        <CustomCursor />
         {/* Layer 1: Animated Aurora Gradient Mesh */}
         <div className="aurora-mesh" />
         {/* Layer 2: Subtle Film Grain Noise Texture */}

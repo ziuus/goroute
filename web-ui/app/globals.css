@@ -213,3 +213,65 @@ button, a, input, select {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-dim);
 }
+
+/* Global Interactive Cursor States */
+button, 
+a, 
+input[type="button"], 
+input[type="submit"], 
+input[type="checkbox"], 
+input[type="radio"],
+select,
+[role="button"],
+.clickable {
+  cursor: pointer !important;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+.cursor-not-allowed {
+  cursor: not-allowed !important;
+}
+
+/* Subtle Cursor Glow Follower Ring */
+.custom-cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background-color: var(--accent);
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.2s ease, transform 0.05s linear;
+}
+
+.custom-cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--accent);
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 99998;
+  opacity: 0.35;
+  transform: translate(-50%, -50%);
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s ease,
+              background-color 0.2s ease,
+              transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.custom-cursor-ring.active-hover {
+  width: 52px;
+  height: 52px;
+  opacity: 0.18;
+  background-color: var(--accent);
+  border-color: transparent;
+}
