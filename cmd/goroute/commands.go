@@ -237,6 +237,12 @@ func NewServeCmd() *cobra.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 
+			if !noDashboard {
+				if cfg.Server.DisableDashboard || os.Getenv("GOROUTE_NO_DASHBOARD") == "1" || os.Getenv("GOROUTE_NO_DASHBOARD") == "true" {
+					noDashboard = true
+				}
+			}
+
 			if noDashboard {
 				fmt.Printf("⚡ GoRoute starting on http://%s (Headless mode, dashboard disabled)\n", addr)
 			} else {

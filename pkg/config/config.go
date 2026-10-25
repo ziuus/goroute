@@ -10,9 +10,10 @@ import (
 )
 
 type ServerConfig struct {
-	Port       int    `yaml:"port"`
-	Host       string `yaml:"host"`
-	StorageDir string `yaml:"storage_dir"`
+	Port             int    `yaml:"port" json:"port"`
+	Host             string `yaml:"host" json:"host"`
+	StorageDir       string `yaml:"storage_dir" json:"storage_dir"`
+	DisableDashboard bool   `yaml:"disable_dashboard,omitempty" json:"disable_dashboard,omitempty"`
 }
 
 type AccountConfig struct {
