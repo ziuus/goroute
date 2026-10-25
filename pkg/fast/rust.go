@@ -59,7 +59,7 @@ func initRust() {
 		return
 	}
 
-	lib, err := purego.Dlopen(libPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+	lib, err := openRustLib(libPath)
 	if err != nil {
 		rustAvailable = false
 		return
