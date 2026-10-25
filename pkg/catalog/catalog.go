@@ -70,7 +70,7 @@ var Registry = []CatalogEntry{
 	{
 		ID:          "mistral",
 		Name:        "Mistral AI",
-		Type:        "openai",
+		Type:        "mistral",
 		Category:    "frontier",
 		BaseURL:     "https://api.mistral.ai/v1",
 		AuthType:    "apikey",

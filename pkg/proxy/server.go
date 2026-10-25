@@ -39,6 +39,7 @@ import (
 	"github.com/ziuus/goroute/pkg/providers/copilot"
 	"github.com/ziuus/goroute/pkg/providers/cursor"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
+	"github.com/ziuus/goroute/pkg/providers/mistral"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/resilience"
@@ -3650,7 +3651,7 @@ func (s *Server) Reload() error {
 
 	for _, pCfg := range cfg.Providers {
 		switch pCfg.Type {
-		case "openai":
+		case "openai", "mistral":
 			var keys []string
 			for _, a := range pCfg.Accounts {
 				if a.APIKey != "" {
@@ -3685,7 +3686,16 @@ func (s *Server) Reload() error {
 					baseURL = "https://api.openai.com/v1"
 				}
 			}
-			prov := openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+			var prov interface {
+				providers.Provider
+				SetAccountKey(string, string)
+				SetStrategy(string)
+			}
+			if pCfg.Type == "mistral" {
+				prov = mistral.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+			} else {
+				prov = openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+			}
 			for _, a := range pCfg.Accounts {
 				if a.APIKey != "" {
 					prov.SetAccountKey(a.ID, a.APIKey)
