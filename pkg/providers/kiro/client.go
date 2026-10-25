@@ -426,13 +426,46 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	var currentToolResults []kiroToolResult
 	var history []kiroHistoryTurn
 
+	lastAssistantToolUseIDs := make(map[string]bool)
+	lastAssistantToolUseCount := 0
+
 	for i, m := range req.Messages {
 		isLast := i == len(req.Messages)-1
 
 		if m.Role == "assistant" {
 			text := ""
 			var toolUses []kiroToolUse
+			assistantToolUseIDs := make(map[string]bool)
 
+			// 1. Parse OpenAI format m.ToolCalls
+			for _, tc := range m.ToolCalls {
+				if tcMap, ok := tc.(map[string]interface{}); ok {
+					id, _ := tcMap["id"].(string)
+					name := ""
+					var input interface{} = map[string]interface{}{}
+					if fn, ok := tcMap["function"].(map[string]interface{}); ok {
+						name, _ = fn["name"].(string)
+						if argsStr, ok := fn["arguments"].(string); ok {
+							var parsedArgs interface{}
+							if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err == nil {
+								input = parsedArgs
+							}
+						} else if fn["arguments"] != nil {
+							input = fn["arguments"]
+						}
+					}
+					if id != "" {
+						toolUses = append(toolUses, kiroToolUse{
+							ToolUseId: id,
+							Name:      name,
+							Input:     input,
+						})
+						assistantToolUseIDs[id] = true
+					}
+				}
+			}
+
+			// 2. Parse Anthropic format content blocks
 			switch v := m.Content.(type) {
 			case string:
 				text = v
@@ -447,15 +480,21 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 							id, _ := bm["id"].(string)
 							name, _ := bm["name"].(string)
 							input := bm["input"]
-							toolUses = append(toolUses, kiroToolUse{
-								ToolUseId: id,
-								Name:      name,
-								Input:     input,
-							})
+							if id != "" && !assistantToolUseIDs[id] {
+								toolUses = append(toolUses, kiroToolUse{
+									ToolUseId: id,
+									Name:      name,
+									Input:     input,
+								})
+								assistantToolUseIDs[id] = true
+							}
 						}
 					}
 				}
 			}
+
+			lastAssistantToolUseIDs = assistantToolUseIDs
+			lastAssistantToolUseCount = len(toolUses)
 
 			history = append(history, kiroHistoryTurn{
 				AssistantResponseMessage: &kiroAssistMsg{
@@ -464,13 +503,39 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				},
 			})
 		} else {
-			// user or system or tool
+			// user, system, or tool
 			text := ""
-			var toolResults []kiroToolResult
+			var rawToolResults []kiroToolResult
 
+			// 1. Direct tool role message (OpenAI format)
+			if m.Role == "tool" && m.ToolCallID != "" {
+				resContent := ""
+				switch c := m.Content.(type) {
+				case string:
+					resContent = c
+				default:
+					b, _ := json.Marshal(c)
+					resContent = string(b)
+				}
+				if resContent == "" {
+					resContent = "(no output)"
+				} else if len(resContent) > 200 {
+					filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
+					resContent = filtered.Output
+				}
+				rawToolResults = append(rawToolResults, kiroToolResult{
+					ToolUseId: m.ToolCallID,
+					Status:    "success",
+					Content:   []kiroToolResultText{{Text: resContent}},
+				})
+			}
+
+			// 2. Content blocks (Anthropic format or text)
 			switch v := m.Content.(type) {
 			case string:
-				text = v
+				if m.Role != "tool" {
+					text = v
+				}
 			case []interface{}:
 				for _, item := range v {
 					if bm, ok := item.(map[string]interface{}); ok {
@@ -499,7 +564,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 								filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
 								resContent = filtered.Output
 							}
-							toolResults = append(toolResults, kiroToolResult{
+							rawToolResults = append(rawToolResults, kiroToolResult{
 								ToolUseId: toolUseId,
 								Status:    status,
 								Content:   []kiroToolResultText{{Text: resContent}},
@@ -509,14 +574,40 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				}
 			}
 
+			// 3. Strict Bedrock Invariant Guard:
+			// Prevents: "The number of toolResult blocks at messages.N.content exceeds the number of toolUse blocks of previous turn."
+			// Any toolResult whose ID does not match the previous assistant turn, or exceeds the count,
+			// is safely converted into plain text context inside Content.
+			var validToolResults []kiroToolResult
+			for _, tr := range rawToolResults {
+				trText := ""
+				if len(tr.Content) > 0 {
+					trText = tr.Content[0].Text
+				}
+
+				if lastAssistantToolUseIDs[tr.ToolUseId] && len(validToolResults) < lastAssistantToolUseCount {
+					validToolResults = append(validToolResults, tr)
+					delete(lastAssistantToolUseIDs, tr.ToolUseId)
+				} else {
+					if text != "" {
+						text += "\n"
+					}
+					text += fmt.Sprintf("[Tool Result %s]:\n%s", tr.ToolUseId, trText)
+				}
+			}
+
+			// Once consumed by a user turn, reset the counter
+			lastAssistantToolUseCount = 0
+			lastAssistantToolUseIDs = make(map[string]bool)
+
 			text = strings.TrimSpace(text)
 			if isLast {
 				userContent = text
-				currentToolResults = toolResults
+				currentToolResults = validToolResults
 			} else {
 				var uCtx *kiroUserInputContext
-				if len(toolResults) > 0 {
-					uCtx = &kiroUserInputContext{ToolResults: toolResults}
+				if len(validToolResults) > 0 {
+					uCtx = &kiroUserInputContext{ToolResults: validToolResults}
 				}
 				history = append(history, kiroHistoryTurn{
 					UserInputMessage: &kiroUserMsg{
