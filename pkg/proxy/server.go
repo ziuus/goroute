@@ -2022,13 +2022,44 @@ func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAgentSetup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Agent string `json:"agent"`
+		Agent      string   `json:"agent"`
+		Model      string   `json:"model"`
+		SmallModel string   `json:"small_model"`
+		Models     []string `json:"models"`
+		BaseURL    string   `json:"base_url"`
+		APIKey     string   `json:"api_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	out, err := exec.Command("goroute", "setup", req.Agent).CombinedOutput()
+	if req.Agent == "" {
+		http.Error(w, "agent name is required", http.StatusBadRequest)
+		return
+	}
+
+	args := []string{"setup", req.Agent}
+	if req.Model != "" {
+		args = append(args, "--model", req.Model)
+	}
+	if req.SmallModel != "" {
+		args = append(args, "--small-model", req.SmallModel)
+	}
+	if len(req.Models) > 0 {
+		args = append(args, "--models", strings.Join(req.Models, ","))
+	}
+	if req.BaseURL != "" {
+		args = append(args, "--url", req.BaseURL)
+	}
+	if req.APIKey != "" {
+		args = append(args, "--key", req.APIKey)
+	}
+
+	gorouteBin, err := os.Executable()
+	if err != nil || gorouteBin == "" {
+		gorouteBin = "goroute"
+	}
+	out, err := exec.Command(gorouteBin, args...).CombinedOutput()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -4794,20 +4825,61 @@ func (s *Server) handleConfigureCliAgent(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "agent id is required", http.StatusBadRequest)
 		return
 	}
-	msg, err := clitools.ConfigureTool(id)
+
+	var req struct {
+		Model      string   `json:"model"`
+		SmallModel string   `json:"small_model"`
+		Models     []string `json:"models"`
+		BaseURL    string   `json:"base_url"`
+		APIKey     string   `json:"api_key"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	args := []string{"setup", id}
+	if req.Model != "" {
+		args = append(args, "--model", req.Model)
+	}
+	if req.SmallModel != "" {
+		args = append(args, "--small-model", req.SmallModel)
+	}
+	if len(req.Models) > 0 {
+		args = append(args, "--models", strings.Join(req.Models, ","))
+	}
+	if req.BaseURL != "" {
+		args = append(args, "--url", req.BaseURL)
+	}
+	if req.APIKey != "" {
+		args = append(args, "--key", req.APIKey)
+	}
+
+	gorouteBin, err := os.Executable()
+	if err != nil || gorouteBin == "" {
+		gorouteBin = "goroute"
+	}
+
+	out, err := exec.Command(gorouteBin, args...).CombinedOutput()
 	if err != nil {
+		// Fallback to in-process clitools if standalone command unavailable
+		if msg, cErr := clitools.ConfigureTool(id); cErr == nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":  "ok",
+				"message": msg,
+			})
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "error",
-			"error":  err.Error(),
+			"error":  string(out),
 		})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
-		"message": msg,
+		"message": string(out),
 	})
 }
 

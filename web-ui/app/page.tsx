@@ -172,6 +172,111 @@ export default function GoRouteDashboard() {
   const [newAliasKey, setNewAliasKey] = useState('');
   const [newAliasTarget, setNewAliasTarget] = useState('');
 
+  // Agent Configuration Studio State
+  const [configuringAgent, setConfiguringAgent] = useState<any | null>(null);
+  const [agentPrimaryModel, setAgentPrimaryModel] = useState<string>('claude-3-7-sonnet');
+  const [agentSmallModel, setAgentSmallModel] = useState<string>('gemini-2.5-flash');
+  const [agentSelectedModels, setAgentSelectedModels] = useState<string[]>([]);
+  const [agentCustomUrl, setAgentCustomUrl] = useState<string>('http://127.0.0.1:8128/v1');
+  const [agentApplying, setAgentApplying] = useState<boolean>(false);
+
+  const getAvailableModelsAndCombos = () => {
+    const list: string[] = [];
+    combos.forEach(c => {
+      if (c?.name && !list.includes(c.name)) list.push(c.name);
+    });
+    if (topology?.models) {
+      if (Array.isArray(topology.models)) {
+        topology.models.forEach((m: string) => {
+          if (!list.includes(m)) list.push(m);
+        });
+      } else if (typeof topology.models === 'object') {
+        Object.keys(topology.models).forEach(m => {
+          if (!list.includes(m)) list.push(m);
+        });
+      }
+    }
+    const defaults = [
+      'claude-3-7-sonnet',
+      'claude-3-5-sonnet',
+      'claude-models',
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-3.8-flash-high',
+      'deepseek',
+      'auto',
+      'gpt-4o',
+    ];
+    defaults.forEach(d => {
+      if (!list.includes(d)) list.push(d);
+    });
+    return list;
+  };
+
+  const openAgentConfigModal = (agent: any) => {
+    setConfiguringAgent(agent);
+    if (agent.id === 'opencode') {
+      setAgentPrimaryModel('claude-3-7-sonnet');
+      setAgentSmallModel('gemini-2.5-flash');
+    } else if (agent.id === 'claude') {
+      setAgentPrimaryModel('claude-3-7-sonnet');
+    } else if (agent.id === 'codex') {
+      setAgentPrimaryModel('claude-3-7-sonnet');
+    } else {
+      setAgentPrimaryModel('claude-3-7-sonnet');
+      setAgentSmallModel('gemini-2.5-flash');
+    }
+    setAgentSelectedModels(getAvailableModelsAndCombos());
+  };
+
+  const getAgentConfigPreview = (agent: any) => {
+    if (!agent) return '';
+    if (agent.id === 'opencode') {
+      return JSON.stringify({
+        provider: {
+          gr: {
+            name: "GoRoute",
+            npm: "@ai-sdk/openai-compatible",
+            options: { baseURL: agentCustomUrl || "http://127.0.0.1:8128/v1", apiKey: "goroute" },
+            models: Object.fromEntries(agentSelectedModels.map(m => [m, { name: m }]))
+          }
+        },
+        model: `gr/${agentPrimaryModel}`,
+        small_model: `gr/${agentSmallModel}`,
+        agent: {
+          build: { model: `gr/${agentPrimaryModel}` },
+          plan: { model: `gr/${agentPrimaryModel}` }
+        }
+      }, null, 2);
+    }
+    if (agent.id === 'claude') {
+      return JSON.stringify({
+        customBaseUrl: "http://127.0.0.1:8128",
+        model: agentPrimaryModel,
+        env: {
+          ANTHROPIC_BASE_URL: "http://127.0.0.1:8128",
+          ANTHROPIC_API_KEY: "goroute",
+          ANTHROPIC_MODEL: agentPrimaryModel
+        }
+      }, null, 2);
+    }
+    if (agent.id === 'codex') {
+      return `model = "${agentPrimaryModel}"
+model_provider = "goroute"
+
+[model_providers.goroute]
+name = "GoRoute"
+base_url = "http://127.0.0.1:8128/v1"
+wire_api = "responses"`;
+    }
+    return JSON.stringify({
+      provider: "goroute",
+      baseUrl: "http://127.0.0.1:8128/v1",
+      apiKey: "goroute",
+      model: agentPrimaryModel
+    }, null, 2);
+  };
+
   const [toastMsg, setToastMsg] = useState('');
 
   const showToast = (msg: string) => {
@@ -377,12 +482,20 @@ export default function GoRouteDashboard() {
     }
   };
 
-  const handleConfigureCli = async (toolId: string) => {
-    showToast(`Configuring ${toolId} to use GoRoute (:8128)...`);
+  const handleConfigureCli = async (
+    toolId: string,
+    customOpts?: { model?: string; small_model?: string; models?: string[]; base_url?: string }
+  ) => {
+    showToast(`Configuring ${toolId} for GoRoute...`);
     try {
-      const res = await fetch(`/api/cli-agents/${toolId}/configure`, { method: 'POST' }).then(r => r.json());
+      const res = await fetch(`/api/cli-agents/${toolId}/configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customOpts || {}),
+      }).then(r => r.json());
       if (res.status === 'ok' || res.success) {
-        showToast(`${toolId} configured cleanly!`);
+        showToast(`✅ ${toolId} configured cleanly!`);
+        setConfiguringAgent(null);
         fetchAllData();
       } else {
         showToast(`Config error: ${res.error || 'Failed'}`);
@@ -1740,30 +1853,41 @@ export default function GoRouteDashboard() {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3 dark:border-slate-800">
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3">
                     <a
                       href={agent.docs_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:text-rose-400"
+                      className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition"
                     >
                       <span>Docs</span>
                       <ExternalLink className="h-3 w-3" />
                     </a>
 
-                    <button
-                      onClick={() => handleConfigureCli(agent.id)}
-                      disabled={!agent.detected}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
-                        agent.configured
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                          : agent.detected
-                          ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs '
-                          : 'cursor-not-allowed bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 dark:bg-slate-800 dark:text-slate-600 dark:text-slate-400'
-                      }`}
-                    >
-                      {agent.configured ? 'Connected' : 'Connect to GoRoute'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openAgentConfigModal(agent)}
+                        className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:text-rose-600 transition shadow-xs"
+                        title="Customize models, combos, and options"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-rose-500" />
+                        <span>Customize</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleConfigureCli(agent.id)}
+                        disabled={!agent.detected}
+                        className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                          agent.configured
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : agent.detected
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                            : 'cursor-not-allowed bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                        }`}
+                      >
+                        {agent.configured ? 'Connected' : 'Quick Connect'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -2509,6 +2633,192 @@ export default function GoRouteDashboard() {
                   <RotateCcw className="h-3.5 w-3.5" />
                   <span>Replay This Request</span>
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AGENT CONFIGURATION STUDIO MODAL */}
+      {configuringAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="liquid-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
+                  <Terminal className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+                    Configure {configuringAgent.name}
+                  </h3>
+                  <p className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                    Target: {configuringAgent.settings_file}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfiguringAgent(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-5">
+              {/* Primary Model */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Primary / Default Model or Combo
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                  The main model this agent will invoke for reasoning, generation, and tool use.
+                </p>
+                <select
+                  value={agentPrimaryModel}
+                  onChange={(e) => setAgentPrimaryModel(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <optgroup label="Active Failover Combos">
+                    {combos.map(c => (
+                      <option key={c.name} value={c.name}>
+                        ⚡ {c.name} ({c.targets?.length || 0} targets)
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Individual Models">
+                    {getAvailableModelsAndCombos().filter(m => !combos.some(c => c.name === m)).map(m => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Small / Fast Model */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Small / Fast Model (Sub-agents & Planning)
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                  Used by multi-agent workflows (like OpenCode build/plan) for indexing and fast iterations.
+                </p>
+                <select
+                  value={agentSmallModel}
+                  onChange={(e) => setAgentSmallModel(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {getAvailableModelsAndCombos().map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Allowed Models & Combos Checklist */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Models & Combos to Expose ({agentSelectedModels.length} selected)
+                  </label>
+                  <div className="flex gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setAgentSelectedModels(getAvailableModelsAndCombos())}
+                      className="text-rose-600 hover:underline dark:text-rose-400"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setAgentSelectedModels([agentPrimaryModel, agentSmallModel])}
+                      className="text-slate-500 hover:underline dark:text-slate-400"
+                    >
+                      Minimal
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 rounded-xl border border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/50">
+                  {getAvailableModelsAndCombos().map(m => {
+                    const selected = agentSelectedModels.includes(m);
+                    const isCombo = combos.some(c => c.name === m);
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => {
+                          if (selected) {
+                            setAgentSelectedModels(agentSelectedModels.filter(x => x !== m));
+                          } else {
+                            setAgentSelectedModels([...agentSelectedModels, m]);
+                          }
+                        }}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono transition ${
+                          selected
+                            ? 'bg-rose-500 text-white font-medium shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        {isCombo && <span>⚡</span>}
+                        <span>{m}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Live Config Preview */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Live Configuration Preview
+                </label>
+                <pre className="max-h-36 overflow-y-auto rounded-xl bg-slate-900 p-3 text-[11px] font-mono text-emerald-400 dark:bg-black">
+                  {getAgentConfigPreview(configuringAgent)}
+                </pre>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cmd = `goroute setup ${configuringAgent.id} --model ${agentPrimaryModel} --small-model ${agentSmallModel} --models "${agentSelectedModels.join(',')}"`;
+                    navigator.clipboard.writeText(cmd);
+                    showToast('Copied CLI command to clipboard!');
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Command</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfiguringAgent(null)}
+                    className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={agentApplying}
+                    onClick={() => {
+                      setAgentApplying(true);
+                      handleConfigureCli(configuringAgent.id, {
+                        model: agentPrimaryModel,
+                        small_model: agentSmallModel,
+                        models: agentSelectedModels,
+                        base_url: agentCustomUrl,
+                      }).finally(() => setAgentApplying(false));
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-500/20 transition disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4" />
+                    <span>{agentApplying ? 'Applying...' : 'Apply to Local Agent'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

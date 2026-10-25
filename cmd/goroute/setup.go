@@ -11,7 +11,15 @@ import (
 	"github.com/ziuus/goroute/pkg/config"
 )
 
-type AgentConfigurator func(home string) error
+type AgentSetupOptions struct {
+	Model      string   `json:"model,omitempty"`
+	SmallModel string   `json:"small_model,omitempty"`
+	Models     []string `json:"models,omitempty"`
+	BaseURL    string   `json:"base_url,omitempty"`
+	APIKey     string   `json:"api_key,omitempty"`
+}
+
+type AgentConfigurator func(home string, opts AgentSetupOptions) error
 
 var agentConfigurators = map[string]struct {
 	Desc string
@@ -84,6 +92,8 @@ var agentConfigurators = map[string]struct {
 }
 
 func NewSetupCmd() *cobra.Command {
+	var model, smallModel, modelsStr, baseURL, apiKey string
+
 	setupCmd := &cobra.Command{
 		Use:   "setup [agent|all]",
 		Short: "Configure any AI coding agent to connect to GoRoute (Claude, Codex, OpenCode, Aider, etc.)",
@@ -91,6 +101,24 @@ func NewSetupCmd() *cobra.Command {
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return fmt.Errorf("could not determine user home directory: %w", err)
+			}
+
+			var modelsList []string
+			if modelsStr != "" {
+				for _, m := range strings.Split(modelsStr, ",") {
+					m = strings.TrimSpace(m)
+					if m != "" {
+						modelsList = append(modelsList, m)
+					}
+				}
+			}
+
+			opts := AgentSetupOptions{
+				Model:      model,
+				SmallModel: smallModel,
+				Models:     modelsList,
+				BaseURL:    baseURL,
+				APIKey:     apiKey,
 			}
 
 			if len(args) == 0 {
@@ -112,7 +140,7 @@ func NewSetupCmd() *cobra.Command {
 				successCount := 0
 				for k, v := range agentConfigurators {
 					fmt.Printf("\n▶ Setting up %s...\n", k)
-					if err := v.Run(home); err != nil {
+					if err := v.Run(home, opts); err != nil {
 						fmt.Printf("  ⚠️  Failed to setup %s: %v\n", k, err)
 					} else {
 						successCount++
@@ -127,14 +155,20 @@ func NewSetupCmd() *cobra.Command {
 				return fmt.Errorf("unknown agent '%s'. Run 'goroute setup' to view supported agents", target)
 			}
 
-			return cfg.Run(home)
+			return cfg.Run(home, opts)
 		},
 	}
+
+	setupCmd.Flags().StringVarP(&model, "model", "m", "", "Primary / default model for this agent (e.g. claude-3-7-sonnet, gemini-2.5-flash, or combo name)")
+	setupCmd.Flags().StringVarP(&smallModel, "small-model", "s", "", "Small / fast / planning model for this agent (e.g. gemini-2.5-flash)")
+	setupCmd.Flags().StringVar(&modelsStr, "models", "", "Comma-separated list of models/combos to expose to this agent")
+	setupCmd.Flags().StringVar(&baseURL, "url", "", "Custom GoRoute base URL (default: http://127.0.0.1:8128/v1)")
+	setupCmd.Flags().StringVar(&apiKey, "key", "", "API key (default: goroute)")
 
 	return setupCmd
 }
 
-func setupClaude(home string) error {
+func setupClaude(home string, opts AgentSetupOptions) error {
 	claudeDir := filepath.Join(home, ".claude")
 	_ = os.MkdirAll(claudeDir, 0700)
 	settingsPath := filepath.Join(claudeDir, "settings.json")
@@ -144,14 +178,28 @@ func setupClaude(home string) error {
 		_ = json.Unmarshal(content, &data)
 	}
 
-	data["customBaseUrl"] = "http://127.0.0.1:8128"
+	targetURL := "http://127.0.0.1:8128"
+	if opts.BaseURL != "" {
+		targetURL = strings.TrimSuffix(opts.BaseURL, "/v1")
+	}
+	targetKey := "goroute"
+	if opts.APIKey != "" {
+		targetKey = opts.APIKey
+	}
+
+	data["customBaseUrl"] = targetURL
 
 	env, ok := data["env"].(map[string]interface{})
 	if !ok {
 		env = make(map[string]interface{})
 	}
-	env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:8128"
-	env["ANTHROPIC_API_KEY"] = "goroute"
+	env["ANTHROPIC_BASE_URL"] = targetURL
+	env["ANTHROPIC_API_KEY"] = targetKey
+	if opts.Model != "" {
+		data["model"] = opts.Model
+		env["ANTHROPIC_MODEL"] = opts.Model
+		env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = opts.Model
+	}
 	data["env"] = env
 
 	bytes, err := json.MarshalIndent(data, "", "  ")
@@ -164,20 +212,32 @@ func setupClaude(home string) error {
 
 	fmt.Println("✅ Configured Claude Code!")
 	fmt.Printf("   Updated settings at: %s\n", settingsPath)
+	if opts.Model != "" {
+		fmt.Printf("   Active model set to: %s\n", opts.Model)
+	}
 	fmt.Println("   Preserved all existing hooks, plugins, and custom configurations.")
 	fmt.Println("\nLaunch with:")
 	fmt.Println("  claude")
 	return nil
 }
 
-func setupCodex(home string) error {
+func setupCodex(home string, opts AgentSetupOptions) error {
 	codexDir := filepath.Join(home, ".codex")
 	_ = os.MkdirAll(codexDir, 0700)
 	profilePath := filepath.Join(codexDir, "goroute.config.toml")
 	configPath := filepath.Join(codexDir, "config.toml")
 
-	tomlContent := `# GoRoute Configuration for OpenAI Codex CLI
-model = "claude-3-7-sonnet"
+	modelName := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		modelName = opts.Model
+	}
+	targetURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		targetURL = opts.BaseURL
+	}
+
+	tomlContent := fmt.Sprintf(`# GoRoute Configuration for OpenAI Codex CLI
+model = "%s"
 model_provider = "goroute"
 model_context_window = 131072
 model_auto_compact_token_limit = 112000
@@ -185,11 +245,12 @@ tool_output_token_limit = 32768
 
 [model_providers.goroute]
 name = "GoRoute"
-base_url = "http://127.0.0.1:8128/v1"
+base_url = "%s"
 env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 requires_openai_auth = false
-`
+`, modelName, targetURL)
+
 	if err := os.WriteFile(profilePath, []byte(tomlContent), 0600); err != nil {
 		return err
 	}
@@ -206,6 +267,7 @@ requires_openai_auth = false
 
 	fmt.Println("✅ Configured OpenAI Codex CLI!")
 	fmt.Printf("   Wrote profile to: %s\n", profilePath)
+	fmt.Printf("   Active model: %s\n", modelName)
 	fmt.Println("\nLaunch with:")
 	fmt.Println("  goroute run codex")
 	fmt.Println("  OR: codex --profile goroute")
@@ -249,7 +311,25 @@ func getAllGoRouteModels(home string) map[string]string {
 	return models
 }
 
-func setupOpenCode(home string) error {
+func setupOpenCode(home string, opts AgentSetupOptions) error {
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+
+	primaryModel := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		primaryModel = opts.Model
+	}
+	smallModel := "gemini-2.5-flash"
+	if opts.SmallModel != "" {
+		smallModel = opts.SmallModel
+	}
+
 	// 1. Register gr and goroute credentials in ~/.local/share/opencode/auth.json
 	authDir := filepath.Join(home, ".local", "share", "opencode")
 	_ = os.MkdirAll(authDir, 0700)
@@ -260,22 +340,45 @@ func setupOpenCode(home string) error {
 	}
 	authExisting["gr"] = map[string]interface{}{
 		"type": "api",
-		"key":  "goroute",
+		"key":  apiKey,
 	}
 	authExisting["goroute"] = map[string]interface{}{
 		"type": "api",
-		"key":  "goroute",
+		"key":  apiKey,
 	}
 	if aBytes, err := json.MarshalIndent(authExisting, "", "  "); err == nil {
 		_ = os.WriteFile(authPath, aBytes, 0600)
 	}
 
-	// 2. Discover all models from GoRoute
+	// 2. Discover all models from GoRoute or use requested models
 	allModels := getAllGoRouteModels(home)
 	modelsMap := make(map[string]interface{})
-	for modelID, modelName := range allModels {
-		modelsMap[modelID] = map[string]interface{}{
-			"name": modelName,
+
+	if len(opts.Models) > 0 {
+		for _, m := range opts.Models {
+			m = strings.TrimSpace(m)
+			if m == "" {
+				continue
+			}
+			label := m
+			if knownLabel, ok := allModels[m]; ok {
+				label = knownLabel
+			} else {
+				label = fmt.Sprintf("%s (GoRoute)", m)
+			}
+			modelsMap[m] = map[string]interface{}{"name": label}
+		}
+		if _, ok := modelsMap[primaryModel]; !ok {
+			modelsMap[primaryModel] = map[string]interface{}{"name": primaryModel + " (Primary)"}
+		}
+		if _, ok := modelsMap[smallModel]; !ok {
+			modelsMap[smallModel] = map[string]interface{}{"name": smallModel + " (Fast)"}
+		}
+	} else {
+		for modelID, modelName := range allModels {
+			modelsMap[modelID] = map[string]interface{}{
+				"name": modelName,
+			}
 		}
 	}
 
@@ -298,8 +401,8 @@ func setupOpenCode(home string) error {
 		"name": "GoRoute",
 		"npm":  "@ai-sdk/openai-compatible",
 		"options": map[string]interface{}{
-			"baseURL": "http://127.0.0.1:8128/v1",
-			"apiKey":  "goroute",
+			"baseURL": baseURL,
+			"apiKey":  apiKey,
 		},
 		"models": modelsMap,
 	}
@@ -308,14 +411,14 @@ func setupOpenCode(home string) error {
 	providers["goroute"] = grProvider
 
 	existing["provider"] = providers
-	existing["model"] = "gr/claude-3-7-sonnet"
-	existing["small_model"] = "gr/gemini-2.5-flash"
+	existing["model"] = "gr/" + primaryModel
+	existing["small_model"] = "gr/" + smallModel
 	existing["agent"] = map[string]interface{}{
 		"build": map[string]interface{}{
-			"model": "gr/claude-3-7-sonnet",
+			"model": "gr/" + primaryModel,
 		},
 		"plan": map[string]interface{}{
-			"model": "gr/claude-3-7-sonnet",
+			"model": "gr/" + primaryModel,
 		},
 	}
 
@@ -336,8 +439,8 @@ func setupOpenCode(home string) error {
 			p["gr"] = grProvider
 			p["goroute"] = grProvider
 			existingJsonc["provider"] = p
-			existingJsonc["model"] = "gr/claude-3-7-sonnet"
-			existingJsonc["small_model"] = "gr/gemini-2.5-flash"
+			existingJsonc["model"] = "gr/" + primaryModel
+			existingJsonc["small_model"] = "gr/" + smallModel
 			if jBytes, err := json.MarshalIndent(existingJsonc, "", "  "); err == nil {
 				_ = os.WriteFile(jsoncPath, jBytes, 0600)
 			}
@@ -346,28 +449,41 @@ func setupOpenCode(home string) error {
 
 	fmt.Println("✅ Configured OpenCode!")
 	fmt.Printf("   Configured %d GoRoute models across providers:\n", len(modelsMap))
-	for m := range allModels {
+	for m := range modelsMap {
 		fmt.Printf("   • gr/%s\n", m)
 	}
 	fmt.Printf("   Wrote configuration to: %s\n", configPath)
 	fmt.Printf("   Authenticated provider key in: %s\n", authPath)
-	fmt.Println("   Active model set to: gr/claude-3-7-sonnet")
+	fmt.Printf("   Active model set to: gr/%s\n", primaryModel)
+	fmt.Printf("   Small model set to:  gr/%s\n", smallModel)
 	fmt.Println("   Uniform format: gr/agy/gemini-flash-3-8, gr/agy/claude-opus-4-6, etc.")
 	fmt.Println("   Launch with: opencode (or goroute run opencode)")
 	return nil
 }
 
-func setupCursor(home string) error {
+func setupCursor(home string, opts AgentSetupOptions) error {
 	cursorDir := filepath.Join(home, ".config", "Cursor", "User")
 	settingsPath := filepath.Join(cursorDir, "settings.json")
+
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
 
 	if _, err := os.Stat(cursorDir); err == nil {
 		existing := make(map[string]interface{})
 		if raw, err := os.ReadFile(settingsPath); err == nil {
 			_ = json.Unmarshal(raw, &existing)
 		}
-		existing["cursor.openaiBaseUrl"] = "http://127.0.0.1:8128/v1"
-		existing["cursor.openaiApiKey"] = "goroute"
+		existing["cursor.openaiBaseUrl"] = baseURL
+		existing["cursor.openaiApiKey"] = apiKey
+		if opts.Model != "" {
+			existing["cursor.model"] = opts.Model
+		}
 		if bytes, err := json.MarshalIndent(existing, "", "  "); err == nil {
 			_ = os.WriteFile(settingsPath, bytes, 0600)
 			fmt.Printf("✅ Updated Cursor settings at: %s\n", settingsPath)
@@ -376,48 +492,77 @@ func setupCursor(home string) error {
 
 	fmt.Println("✅ Cursor IDE Configuration Details:")
 	fmt.Println("  1. Open Cursor Settings (Ctrl+,) → Models")
-	fmt.Println("  2. Turn on 'Override OpenAI Base URL' and enter:")
-	fmt.Println("     http://127.0.0.1:8128/v1")
-	fmt.Println("  3. Set 'OpenAI API Key' to:")
-	fmt.Println("     goroute")
-	fmt.Println("  4. Add model: claude-3-7-sonnet or gemini-2.5-pro")
+	fmt.Printf("  2. Turn on 'Override OpenAI Base URL' and enter: %s\n", baseURL)
+	fmt.Printf("  3. Set 'OpenAI API Key' to: %s\n", apiKey)
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+	fmt.Printf("  4. Add model: %s\n", model)
 	return nil
 }
 
-func setupCline(home string) error {
+func setupCline(home string, opts AgentSetupOptions) error {
 	clineDataDir := filepath.Join(home, ".cline", "data")
 	_ = os.MkdirAll(clineDataDir, 0700)
 
 	secretsPath := filepath.Join(clineDataDir, "secrets.json")
 	statePath := filepath.Join(clineDataDir, "globalState.json")
 
-	secrets := map[string]string{"openAiApiKey": "goroute"}
+	baseURL := "http://127.0.0.1:8128"
+	if opts.BaseURL != "" {
+		baseURL = strings.TrimSuffix(opts.BaseURL, "/v1")
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+	planModel := model
+	if opts.SmallModel != "" {
+		planModel = opts.SmallModel
+	}
+
+	secrets := map[string]string{"openAiApiKey": apiKey}
 	sBytes, _ := json.MarshalIndent(secrets, "", "  ")
 	_ = os.WriteFile(secretsPath, sBytes, 0600)
 
 	state := map[string]interface{}{
-		"actModeApiProvider":     "openai",
-		"planModeApiProvider":    "openai",
-		"openAiBaseUrl":          "http://127.0.0.1:8128",
-		"openAiModelId":          "claude-3-7-sonnet",
-		"planModeOpenAiModelId":  "claude-3-7-sonnet",
+		"actModeApiProvider":    "openai",
+		"planModeApiProvider":   "openai",
+		"openAiBaseUrl":         baseURL,
+		"openAiModelId":         model,
+		"planModeOpenAiModelId": planModel,
 	}
 	stBytes, _ := json.MarshalIndent(state, "", "  ")
 	_ = os.WriteFile(statePath, stBytes, 0600)
 
 	fmt.Println("✅ Configured Cline CLI & Standalone Mode!")
 	fmt.Printf("   Wrote secrets to: %s\n", secretsPath)
-	fmt.Println("\nFor VS Code Extension UI:")
-	fmt.Println("  - Provider: OpenAI Compatible")
-	fmt.Println("  - Base URL: http://127.0.0.1:8128")
-	fmt.Println("  - API Key:  goroute")
+	fmt.Printf("   Active model set to: %s\n", model)
 	return nil
 }
 
-func setupRoo(home string) error {
+func setupRoo(home string, opts AgentSetupOptions) error {
 	rooDir := filepath.Join(home, ".roo")
 	_ = os.MkdirAll(rooDir, 0700)
 	importPath := filepath.Join(rooDir, "settings-import.json")
+
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
 
 	importDoc := map[string]interface{}{
 		"providerProfiles": map[string]interface{}{
@@ -425,9 +570,9 @@ func setupRoo(home string) error {
 			"apiConfigs": map[string]interface{}{
 				"GoRoute": map[string]interface{}{
 					"apiProvider":   "openai",
-					"openAiBaseUrl": "http://127.0.0.1:8128/v1",
-					"openAiApiKey":  "goroute",
-					"openAiModelId": "claude-3-7-sonnet",
+					"openAiBaseUrl": baseURL,
+					"openAiApiKey":  apiKey,
+					"openAiModelId": model,
 				},
 			},
 		},
@@ -438,21 +583,33 @@ func setupRoo(home string) error {
 	}
 
 	fmt.Println("✅ Generated Roo Code Import Document!")
-	fmt.Printf("   Wrote file to: %s\n", importPath)
-	fmt.Println("   In Roo Code: Click Settings → Import Settings → Select this file.")
+	fmt.Printf("   Wrote file to: %s (Active model: %s)\n", importPath, model)
 	return nil
 }
 
-func setupKilo(home string) error {
+func setupKilo(home string, opts AgentSetupOptions) error {
 	kiloDir := filepath.Join(home, ".local", "share", "kilo")
 	_ = os.MkdirAll(kiloDir, 0700)
 	authPath := filepath.Join(kiloDir, "auth.json")
 
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
 	auth := map[string]interface{}{
 		"openai-compatible": map[string]string{
-			"apiKey":  "goroute",
-			"baseUrl": "http://127.0.0.1:8128/v1",
-			"model":   "claude-3-7-sonnet",
+			"apiKey":  apiKey,
+			"baseUrl": baseURL,
+			"model":   model,
 		},
 	}
 	bytes, _ := json.MarshalIndent(auth, "", "  ")
@@ -461,115 +618,173 @@ func setupKilo(home string) error {
 	}
 
 	fmt.Println("✅ Configured Kilo Code!")
-	fmt.Printf("   Wrote configuration to: %s\n", authPath)
+	fmt.Printf("   Wrote configuration to: %s (Active model: %s)\n", authPath, model)
 	return nil
 }
 
-func setupAider(home string) error {
+func setupAider(home string, opts AgentSetupOptions) error {
 	aiderConf := filepath.Join(home, ".aider.conf.yml")
-	content := `openai-api-base: http://127.0.0.1:8128/v1
-openai-api-key: goroute
-model: openai/claude-3-7-sonnet
-`
+
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
+	content := fmt.Sprintf("openai-api-base: %s\nopenai-api-key: %s\nmodel: openai/%s\n", baseURL, apiKey, model)
 	if err := os.WriteFile(aiderConf, []byte(content), 0600); err != nil {
 		return err
 	}
 
 	fmt.Println("✅ Configured Aider!")
-	fmt.Printf("   Wrote configuration to: %s\n", aiderConf)
-	fmt.Println("   Launch with: goroute run aider")
+	fmt.Printf("   Wrote configuration to: %s (Model: %s)\n", aiderConf, model)
 	return nil
 }
 
-func setupContinue(home string) error {
+func setupContinue(home string, opts AgentSetupOptions) error {
 	contDir := filepath.Join(home, ".continue")
 	_ = os.MkdirAll(contDir, 0700)
 	confPath := filepath.Join(contDir, "config.yaml")
 
-	content := `name: GoRoute Config
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	primaryModel := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		primaryModel = opts.Model
+	}
+	smallModel := "gemini-2.5-pro"
+	if opts.SmallModel != "" {
+		smallModel = opts.SmallModel
+	}
+
+	content := fmt.Sprintf(`name: GoRoute Config
 version: "1.0"
 schema: v1
 models:
-  - name: "GoRoute: claude-3-7-sonnet"
+  - name: "GoRoute: %s"
     provider: openai
-    model: claude-3-7-sonnet
-    apiBase: http://127.0.0.1:8128/v1
-    apiKey: goroute
+    model: %s
+    apiBase: %s
+    apiKey: %s
     roles: [chat, edit, apply]
-  - name: "GoRoute: gemini-2.5-pro"
+  - name: "GoRoute: %s"
     provider: openai
-    model: gemini-2.5-pro
-    apiBase: http://127.0.0.1:8128/v1
-    apiKey: goroute
+    model: %s
+    apiBase: %s
+    apiKey: %s
     roles: [chat, edit, apply]
-`
+`, primaryModel, primaryModel, baseURL, apiKey, smallModel, smallModel, baseURL, apiKey)
+
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
 		return err
 	}
 
 	fmt.Println("✅ Configured Continue (continue.dev & cn CLI)!")
 	fmt.Printf("   Wrote configuration to: %s\n", confPath)
-	fmt.Println("   Run with: cn -p \"hello\"")
 	return nil
 }
 
-func setupCrush(home string) error {
+func setupCrush(home string, opts AgentSetupOptions) error {
 	crushDir := filepath.Join(home, ".config", "crush")
 	_ = os.MkdirAll(crushDir, 0700)
 	confPath := filepath.Join(crushDir, "crush.json")
 
-	content := `{
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	primaryModel := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		primaryModel = opts.Model
+	}
+
+	content := fmt.Sprintf(`{
   "providers": {
     "goroute": {
       "type": "openai-compat",
-      "base_url": "http://127.0.0.1:8128/v1",
-      "api_key": "goroute",
+      "base_url": "%s",
+      "api_key": "%s",
       "models": [
-        {"id": "claude-3-7-sonnet", "name": "GoRoute Claude 3.7 Sonnet"},
+        {"id": "%s", "name": "GoRoute %s"},
         {"id": "gemini-2.5-pro", "name": "GoRoute Gemini 2.5 Pro"}
       ]
     }
   }
 }
-`
+`, baseURL, apiKey, primaryModel, primaryModel)
+
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
 		return err
 	}
 
 	fmt.Println("✅ Configured Charm Crush!")
 	fmt.Printf("   Wrote configuration to: %s\n", confPath)
-	fmt.Println("   Launch with: goroute run crush")
 	return nil
 }
 
-func setupGoose(home string) error {
+func setupGoose(home string, opts AgentSetupOptions) error {
 	gooseDir := filepath.Join(home, ".config", "goose")
 	_ = os.MkdirAll(gooseDir, 0700)
 	confPath := filepath.Join(gooseDir, "config.yaml")
 
-	content := `GOOSE_PROVIDER: openai
-OPENAI_HOST: http://127.0.0.1:8128
-GOOSE_MODEL: claude-3-7-sonnet
-`
+	baseURL := "http://127.0.0.1:8128"
+	if opts.BaseURL != "" {
+		baseURL = strings.TrimSuffix(opts.BaseURL, "/v1")
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
+	content := fmt.Sprintf("GOOSE_PROVIDER: openai\nOPENAI_HOST: %s\nGOOSE_MODEL: %s\n", baseURL, model)
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
 		return err
 	}
 
 	fmt.Println("✅ Configured Goose!")
-	fmt.Printf("   Wrote configuration to: %s\n", confPath)
-	fmt.Println("   Launch with: goroute run goose")
+	fmt.Printf("   Wrote configuration to: %s (Model: %s)\n", confPath, model)
 	return nil
 }
 
-func setupQwen(home string) error {
+func setupQwen(home string, opts AgentSetupOptions) error {
 	qwenDir := filepath.Join(home, ".qwen")
 	_ = os.MkdirAll(qwenDir, 0700)
 	confPath := filepath.Join(qwenDir, "settings.json")
 
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
 	data := map[string]string{
-		"baseUrl": "http://127.0.0.1:8128/v1",
-		"apiKey":  "goroute",
-		"model":   "claude-3-7-sonnet",
+		"baseUrl": baseURL,
+		"apiKey":  apiKey,
+		"model":   model,
 	}
 	bytes, _ := json.MarshalIndent(data, "", "  ")
 	if err := os.WriteFile(confPath, bytes, 0600); err != nil {
@@ -577,33 +792,48 @@ func setupQwen(home string) error {
 	}
 
 	fmt.Println("✅ Configured Qwen Code!")
-	fmt.Printf("   Wrote configuration to: %s\n", confPath)
-	fmt.Println("   Launch with: goroute run qwen")
+	fmt.Printf("   Wrote configuration to: %s (Model: %s)\n", confPath, model)
 	return nil
 }
 
-func setupGemini(home string) error {
+func setupGemini(home string, opts AgentSetupOptions) error {
+	baseURL := "http://127.0.0.1:8128"
+	if opts.BaseURL != "" {
+		baseURL = strings.TrimSuffix(opts.BaseURL, "/v1")
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+
 	fmt.Println("✅ Google Gemini CLI Configuration:")
-	fmt.Println("   Set the following environment variables in your shell:")
-	fmt.Println("     export GOOGLE_GEMINI_BASE_URL=\"http://127.0.0.1:8128\"")
-	fmt.Println("     export GEMINI_API_KEY=\"goroute\"")
-	fmt.Println("\n   Or run directly with:")
-	fmt.Println("     goroute run gemini")
+	fmt.Printf("   Set the following environment variables in your shell:\n")
+	fmt.Printf("     export GOOGLE_GEMINI_BASE_URL=\"%s\"\n", baseURL)
+	fmt.Printf("     export GEMINI_API_KEY=\"%s\"\n", apiKey)
 	return nil
 }
 
-func setup5dive(home string) error {
+func setup5dive(home string, opts AgentSetupOptions) error {
+	baseURL := "http://127.0.0.1:8128"
+	if opts.BaseURL != "" {
+		baseURL = strings.TrimSuffix(opts.BaseURL, "/v1")
+	}
+	model := "claude-3-7-sonnet"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
 	fmt.Println("✅ 5dive Agent Fleet Configuration:")
 	fmt.Println("   To connect your 5dive agent fleet to GoRoute, run:")
-	fmt.Println("     5dive agent auth set claude \\")
-	fmt.Println("       --provider=openai \\")
-	fmt.Println("       --base-url=http://127.0.0.1:8128 \\")
-	fmt.Println("       --auth-profile=goroute \\")
-	fmt.Println("       --model=claude-3-7-sonnet")
+	fmt.Printf("     5dive agent auth set claude \\\n")
+	fmt.Printf("       --provider=openai \\\n")
+	fmt.Printf("       --base-url=%s \\\n", baseURL)
+	fmt.Printf("       --auth-profile=goroute \\\n")
+	fmt.Printf("       --model=%s\n", model)
 	return nil
 }
 
-func setupHermes(home string) error {
+func setupHermes(home string, opts AgentSetupOptions) error {
 	dir := filepath.Join(home, ".hermes")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -614,10 +844,23 @@ func setupHermes(home string) error {
 		content = string(b)
 	}
 
-	gorouteBlock := "providers:\n  goroute:\n    base_url: http://127.0.0.1:8128/v1\n    api_key: goroute\n    default_model: gemini-flash\n"
+	baseURL := "http://127.0.0.1:8128/v1"
+	if opts.BaseURL != "" {
+		baseURL = opts.BaseURL
+	}
+	apiKey := "goroute"
+	if opts.APIKey != "" {
+		apiKey = opts.APIKey
+	}
+	model := "gemini-flash"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
+	gorouteBlock := fmt.Sprintf("providers:\n  goroute:\n    base_url: %s\n    api_key: %s\n    default_model: %s\n", baseURL, apiKey, model)
 	if strings.Contains(content, "providers:") {
 		if !strings.Contains(content, "goroute:") {
-			content = strings.Replace(content, "providers:", "providers:\n  goroute:\n    base_url: http://127.0.0.1:8128/v1\n    api_key: goroute\n    default_model: gemini-flash", 1)
+			content = strings.Replace(content, "providers:", gorouteBlock, 1)
 		}
 	} else {
 		content = gorouteBlock + content
@@ -629,13 +872,10 @@ func setupHermes(home string) error {
 
 	fmt.Println("✅ Configured Hermes Agent!")
 	fmt.Printf("   Wrote provider configuration to: %s\n", cfgFile)
-	fmt.Println("   Base URL: http://127.0.0.1:8128/v1")
-	fmt.Println("   Launch with:")
-	fmt.Println("     hermes chat --provider goroute -m gemini-flash")
 	return nil
 }
 
-func setupOpenClaw(home string) error {
+func setupOpenClaw(home string, opts AgentSetupOptions) error {
 	dir := filepath.Join(home, ".openclaw")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -662,6 +902,11 @@ func setupOpenClaw(home string) error {
 		}
 	}
 
+	model := "gemini-flash"
+	if opts.Model != "" {
+		model = opts.Model
+	}
+
 	// 2. Configure agents defaults
 	agents, ok := root["agents"].(map[string]interface{})
 	if !ok {
@@ -678,10 +923,9 @@ func setupOpenClaw(home string) error {
 		models = make(map[string]interface{})
 		defaults["models"] = models
 	}
-	models["goroute/gemini-flash"] = map[string]interface{}{}
-	models["goroute/claude-sonnet-ag"] = map[string]interface{}{}
+	models["goroute/"+model] = map[string]interface{}{}
 	defaults["model"] = map[string]interface{}{
-		"primary": "goroute/gemini-flash",
+		"primary": "goroute/" + model,
 	}
 
 	out, err := json.MarshalIndent(root, "", "    ")
@@ -693,12 +937,7 @@ func setupOpenClaw(home string) error {
 	}
 
 	fmt.Println("✅ Configured OpenClaw Autonomous Gateway!")
-	fmt.Printf("   Cleaned and updated: %s\n", cfgFile)
-	fmt.Println("   Base URL: http://127.0.0.1:8128/v1")
-	fmt.Println("   Launch with:")
-	fmt.Println("     export OPENAI_BASE_URL=\"http://127.0.0.1:8128/v1\"")
-	fmt.Println("     export OPENAI_API_KEY=\"goroute\"")
-	fmt.Println("     openclaw agent --message \"hello\"")
+	fmt.Printf("   Cleaned and updated: %s (Primary: goroute/%s)\n", cfgFile, model)
 	return nil
 }
 
