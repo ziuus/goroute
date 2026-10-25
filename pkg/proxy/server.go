@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,6 +64,7 @@ type Server struct {
 	keyMgr          *keys.Manager
 	mcpServer       *mcp.Server
 	enableDashboard bool
+	dashboardActive atomic.Bool
 	mux             *chi.Mux
 	cfgPath         string
 	storePath       string
@@ -91,6 +93,7 @@ func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *
 		startTime:       time.Now(),
 		mux:             chi.NewRouter(),
 	}
+	s.dashboardActive.Store(enableDashboard)
 
 	if ts, err := mitm.NewTunnelServer("127.0.0.1:8128"); err == nil {
 		s.tunnelServer = ts
@@ -339,9 +342,43 @@ func (s *Server) setupRoutes() {
 	// Auth & VNC interactive browser login
 	s.registerAuthAndVncRoutes()
 
-	if s.enableDashboard {
-		s.mux.Handle("/*", web.Handler())
-	}
+	// Web dashboard runtime toggle endpoints
+	s.mux.Get("/api/web/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"enabled": s.dashboardActive.Load(),
+		})
+	})
+
+	s.mux.Post("/api/web/enable", func(w http.ResponseWriter, r *http.Request) {
+		s.dashboardActive.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"enabled": true,
+			"message": "Web dashboard enabled on http://" + r.Host + "/",
+		})
+	})
+
+	s.mux.Post("/api/web/disable", func(w http.ResponseWriter, r *http.Request) {
+		s.dashboardActive.Store(false)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "ok",
+			"enabled": false,
+			"message": "Web dashboard disabled (pure headless gateway)",
+		})
+	})
+
+	// Dynamic web dashboard handler (serves static assets when active, 404 when disabled)
+	webH := web.Handler()
+	s.mux.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+		if !s.dashboardActive.Load() {
+			http.NotFound(w, r)
+			return
+		}
+		webH.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Handler() http.Handler {
@@ -3652,6 +3689,12 @@ func (s *Server) Reload() error {
 	cfg, err := config.Load(s.cfgPath)
 	if err != nil {
 		return fmt.Errorf("failed to reload config from %s: %w", s.cfgPath, err)
+	}
+
+	if cfg.Server.DisableDashboard {
+		s.dashboardActive.Store(false)
+	} else if s.enableDashboard {
+		s.dashboardActive.Store(true)
 	}
 
 	st, _ := store.NewStore(s.storePath, "goroute-default-key")
