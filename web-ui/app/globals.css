@@ -47,12 +47,16 @@
     box-sizing: border-box;
   }
 
-  body, button, input, select, textarea {
+  body {
     background-color: var(--bg-base);
     color: var(--text-main);
     font-family: 'Quicksand', var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+  }
+
+  button, input, select, textarea {
+    font-family: inherit;
   }
 
   code, pre, .font-mono, [data-mono="true"] {
