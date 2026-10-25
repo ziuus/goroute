@@ -35,8 +35,8 @@ type DBStore struct {
 }
 
 var (
-	globalDB   atomic.Pointer[DBStore]
-	dbInitOnce sync.Once
+	globalDB atomic.Pointer[DBStore]
+	initDBMu sync.Mutex
 )
 
 // InitDB initializes SQLite storage in ~/.goroute/goroute.db
@@ -131,12 +131,16 @@ func InitDB(dbPath string) (*DBStore, error) {
 
 // GetDB returns the initialized global DB store.
 func GetDB() *DBStore {
-	dbInitOnce.Do(func() {
-		if globalDB.Load() == nil {
-			InitDB("")
-		}
-	})
-	return globalDB.Load()
+	if store := globalDB.Load(); store != nil {
+		return store
+	}
+	initDBMu.Lock()
+	defer initDBMu.Unlock()
+	if store := globalDB.Load(); store != nil {
+		return store
+	}
+	store, _ := InitDB("")
+	return store
 }
 
 // SaveCombo saves or updates a combo in SQLite with ACID guarantee.
@@ -541,8 +545,11 @@ func (s *DBStore) GetA2ATaskStats() (map[string]int, error) {
 func (s *DBStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	globalDB.CompareAndSwap(s, nil)
 	if s.db != nil {
-		return s.db.Close()
+		err := s.db.Close()
+		s.db = nil
+		return err
 	}
 	return nil
 }

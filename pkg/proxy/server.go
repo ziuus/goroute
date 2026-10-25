@@ -72,11 +72,7 @@ type Server struct {
 func (s *Server) SetConfigPaths(cfgPath, storePath string) {
 	s.cfgPath = cfgPath
 	s.storePath = storePath
-	if s.keyMgr != nil {
-		_ = s.keyMgr.Reload()
-	} else {
-		s.keyMgr = keys.NewManager(cfgPath)
-	}
+	s.keyMgr = keys.NewManager(cfgPath)
 }
 
 func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *Server {

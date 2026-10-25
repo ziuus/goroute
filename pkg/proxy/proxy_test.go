@@ -51,6 +51,7 @@ func TestProxyServerChatCompletions(t *testing.T) {
 	limiter := quota.NewLimiter()
 
 	srv := NewServer(r, limiter, true)
+	srv.SetConfigPaths("", "")
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
