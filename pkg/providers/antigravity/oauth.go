@@ -324,7 +324,21 @@ func AutoImportLocalAntigravity(ctx context.Context) ([]*Account, error) {
 		}
 	}
 
-	// 2. Antigravity IDE SQLite State Database
+	// 2. Linux Secret Service / Keyring (service: gemini, username: antigravity)
+	if out, err := exec.Command("secret-tool", "lookup", "service", "gemini", "username", "antigravity").Output(); err == nil && len(out) > 0 {
+		var tokPayload struct {
+			Token struct {
+				AccessToken  string `json:"access_token"`
+				RefreshToken string `json:"refresh_token"`
+			} `json:"token"`
+			Email string `json:"id_token_email"`
+		}
+		if err := json.Unmarshal(out, &tokPayload); err == nil && tokPayload.Token.RefreshToken != "" {
+			addAccount(tokPayload.Token.RefreshToken, tokPayload.Token.AccessToken, tokPayload.Email, "cli-keyring")
+		}
+	}
+
+	// 3. Antigravity IDE SQLite State Database
 	ideDbs := []string{
 		filepath.Join(home, ".config", "Antigravity", "User", "globalStorage", "state.vscdb"),
 		filepath.Join(home, ".config", "Antigravity IDE", "User", "globalStorage", "state.vscdb"),
