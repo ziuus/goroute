@@ -265,23 +265,22 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 		}
 	}
 
-	// If custom combos are configured, return curated list to prevent flooding clients
-	if len(r.combos) > 0 {
-		return models, nil
-	}
-
-	// Add provider direct models with per-provider timeout
+	// 3. Add provider direct models (e.g. antigravity/gemini-2.5-flash, kiro/claude-3-7-sonnet)
 	for _, p := range r.providers {
 		pCtx, pCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 		pModels, err := p.Models(pCtx)
 		pCancel()
 		if err == nil {
 			for _, m := range pModels {
-				models = append(models, providers.ModelInfo{
-					ID:      fmt.Sprintf("%s/%s", p.ID(), m.ID),
-					Object:  "model",
-					OwnedBy: p.ID(),
-				})
+				fullID := fmt.Sprintf("%s/%s", p.ID(), m.ID)
+				if !seen[fullID] {
+					seen[fullID] = true
+					models = append(models, providers.ModelInfo{
+						ID:      fullID,
+						Object:  "model",
+						OwnedBy: p.ID(),
+					})
+				}
 			}
 		}
 	}

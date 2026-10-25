@@ -174,6 +174,7 @@ export default function GoRouteDashboard() {
 
   // Agent Configuration Studio State
   const [configuringAgent, setConfiguringAgent] = useState<any | null>(null);
+  const [agentProvider, setAgentProvider] = useState<string>('auto');
   const [agentPrimaryModel, setAgentPrimaryModel] = useState<string>('claude-3-7-sonnet');
   const [agentSmallModel, setAgentSmallModel] = useState<string>('gemini-2.5-flash');
   const [agentSelectedModels, setAgentSelectedModels] = useState<string[]>([]);
@@ -231,37 +232,44 @@ export default function GoRouteDashboard() {
 
   const getAgentConfigPreview = (agent: any) => {
     if (!agent) return '';
+    const resolvedPrimary = agentProvider !== 'auto' && !agentPrimaryModel.includes('/') && !combos.some(c => c.name === agentPrimaryModel)
+      ? `${agentProvider}/${agentPrimaryModel}`
+      : agentPrimaryModel;
+    const resolvedSmall = agentProvider !== 'auto' && !agentSmallModel.includes('/') && !combos.some(c => c.name === agentSmallModel)
+      ? `${agentProvider}/${agentSmallModel}`
+      : agentSmallModel;
+
     if (agent.id === 'opencode') {
       return JSON.stringify({
         provider: {
-          gr: {
+          goroute: {
             name: "GoRoute",
             npm: "@ai-sdk/openai-compatible",
             options: { baseURL: agentCustomUrl || "http://127.0.0.1:8128/v1", apiKey: "goroute" },
-            models: Object.fromEntries(agentSelectedModels.map(m => [m, { name: m }]))
+            models: Object.fromEntries(agentSelectedModels.map(m => [m, { name: m, limit: { context: 128000, output: 8192 } }]))
           }
         },
-        model: `gr/${agentPrimaryModel}`,
-        small_model: `gr/${agentSmallModel}`,
+        model: `goroute/${resolvedPrimary}`,
+        small_model: `goroute/${resolvedSmall}`,
         agent: {
-          build: { model: `gr/${agentPrimaryModel}` },
-          plan: { model: `gr/${agentPrimaryModel}` }
+          build: { model: `goroute/${resolvedPrimary}` },
+          plan: { model: `goroute/${resolvedPrimary}` }
         }
       }, null, 2);
     }
     if (agent.id === 'claude') {
       return JSON.stringify({
         customBaseUrl: "http://127.0.0.1:8128",
-        model: agentPrimaryModel,
+        model: resolvedPrimary,
         env: {
           ANTHROPIC_BASE_URL: "http://127.0.0.1:8128",
           ANTHROPIC_API_KEY: "goroute",
-          ANTHROPIC_MODEL: agentPrimaryModel
+          ANTHROPIC_MODEL: resolvedPrimary
         }
       }, null, 2);
     }
     if (agent.id === 'codex') {
-      return `model = "${agentPrimaryModel}"
+      return `model = "${resolvedPrimary}"
 model_provider = "goroute"
 
 [model_providers.goroute]
@@ -273,7 +281,7 @@ wire_api = "responses"`;
       provider: "goroute",
       baseUrl: "http://127.0.0.1:8128/v1",
       apiKey: "goroute",
-      model: agentPrimaryModel
+      model: resolvedPrimary
     }, null, 2);
   };
 
@@ -484,7 +492,7 @@ wire_api = "responses"`;
 
   const handleConfigureCli = async (
     toolId: string,
-    customOpts?: { model?: string; small_model?: string; models?: string[]; base_url?: string }
+    customOpts?: { provider?: string; model?: string; small_model?: string; models?: string[]; base_url?: string }
   ) => {
     showToast(`Configuring ${toolId} for GoRoute...`);
     try {
@@ -2666,6 +2674,46 @@ wire_api = "responses"`;
             </div>
 
             <div className="mt-5 space-y-5">
+              {/* Target Upstream Provider */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Target Upstream Provider
+                </label>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                  Explicitly bind to an upstream provider or use Auto to let GoRoute route models by affinity.
+                </p>
+                <select
+                  value={agentProvider}
+                  onChange={(e) => {
+                    const p = e.target.value;
+                    setAgentProvider(p);
+                    if (p === 'antigravity') {
+                      setAgentPrimaryModel('antigravity/claude-3-7-sonnet');
+                      setAgentSmallModel('antigravity/gemini-2.5-flash');
+                    } else if (p === 'kiro') {
+                      setAgentPrimaryModel('kiro/claude-3-7-sonnet');
+                      setAgentSmallModel('kiro/claude-haiku-4.5');
+                    } else if (p === 'codex') {
+                      setAgentPrimaryModel('codex/gpt-5.6-sol');
+                      setAgentSmallModel('codex/o3-mini');
+                    } else if (p === 'combo') {
+                      setAgentPrimaryModel('claude-models');
+                      setAgentSmallModel('gemini-2.5-flash');
+                    } else {
+                      setAgentPrimaryModel('claude-3-7-sonnet');
+                      setAgentSmallModel('gemini-2.5-flash');
+                    }
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="auto">⚡ Auto (Smart Model Affinity Failover)</option>
+                  <option value="antigravity">🌐 Antigravity (Google Cloud Vertex AI)</option>
+                  <option value="kiro">⚡ Kiro (AWS Bedrock CodeWhisperer)</option>
+                  <option value="codex">🤖 Codex (OpenAI ChatGPT Core)</option>
+                  <option value="combo">🔀 Combos (Multi-Provider Failover Pools)</option>
+                </select>
+              </div>
+
               {/* Primary Model */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -2686,8 +2734,15 @@ wire_api = "responses"`;
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="Individual Models">
-                    {getAvailableModelsAndCombos().filter(m => !combos.some(c => c.name === m)).map(m => (
+                  <optgroup label="Provider Qualified Models">
+                    {getAvailableModelsAndCombos().filter(m => m.includes('/') && !combos.some(c => c.name === m)).map(m => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Auto Affinity Models">
+                    {getAvailableModelsAndCombos().filter(m => !m.includes('/') && !combos.some(c => c.name === m)).map(m => (
                       <option key={m} value={m}>
                         {m}
                       </option>
@@ -2783,7 +2838,8 @@ wire_api = "responses"`;
                 <button
                   type="button"
                   onClick={() => {
-                    const cmd = `goroute setup ${configuringAgent.id} --model ${agentPrimaryModel} --small-model ${agentSmallModel} --models "${agentSelectedModels.join(',')}"`;
+                    const provFlag = agentProvider !== 'auto' ? `-p ${agentProvider} ` : '';
+                    const cmd = `goroute setup ${configuringAgent.id} ${provFlag}-m ${agentPrimaryModel} -s ${agentSmallModel} --models "${agentSelectedModels.join(',')}"`;
                     navigator.clipboard.writeText(cmd);
                     showToast('Copied CLI command to clipboard!');
                   }}
@@ -2807,6 +2863,7 @@ wire_api = "responses"`;
                     onClick={() => {
                       setAgentApplying(true);
                       handleConfigureCli(configuringAgent.id, {
+                        provider: agentProvider !== 'auto' ? agentProvider : '',
                         model: agentPrimaryModel,
                         small_model: agentSmallModel,
                         models: agentSelectedModels,

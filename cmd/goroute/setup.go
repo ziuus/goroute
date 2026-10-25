@@ -12,6 +12,7 @@ import (
 )
 
 type AgentSetupOptions struct {
+	Provider   string   `json:"provider,omitempty"`
 	Model      string   `json:"model,omitempty"`
 	SmallModel string   `json:"small_model,omitempty"`
 	Models     []string `json:"models,omitempty"`
@@ -92,7 +93,7 @@ var agentConfigurators = map[string]struct {
 }
 
 func NewSetupCmd() *cobra.Command {
-	var model, smallModel, modelsStr, baseURL, apiKey string
+	var provider, model, smallModel, modelsStr, baseURL, apiKey string
 
 	setupCmd := &cobra.Command{
 		Use:   "setup [agent|all]",
@@ -114,6 +115,7 @@ func NewSetupCmd() *cobra.Command {
 			}
 
 			opts := AgentSetupOptions{
+				Provider:   provider,
 				Model:      model,
 				SmallModel: smallModel,
 				Models:     modelsList,
@@ -159,6 +161,7 @@ func NewSetupCmd() *cobra.Command {
 		},
 	}
 
+	setupCmd.Flags().StringVarP(&provider, "provider", "p", "", "Target upstream provider (e.g. antigravity, kiro, codex, or auto)")
 	setupCmd.Flags().StringVarP(&model, "model", "m", "", "Primary / default model for this agent (e.g. claude-3-7-sonnet, gemini-2.5-flash, or combo name)")
 	setupCmd.Flags().StringVarP(&smallModel, "small-model", "s", "", "Small / fast / planning model for this agent (e.g. gemini-2.5-flash)")
 	setupCmd.Flags().StringVar(&modelsStr, "models", "", "Comma-separated list of models/combos to expose to this agent")
@@ -166,6 +169,197 @@ func NewSetupCmd() *cobra.Command {
 	setupCmd.Flags().StringVar(&apiKey, "key", "", "API key (default: goroute)")
 
 	return setupCmd
+}
+
+type ResolvedModelInfo struct {
+	FullID       string
+	ProviderID   string
+	ModelName    string
+	DisplayName  string
+	ProviderName string
+	IsCombo      bool
+	ContextLen   int
+	OutputLen    int
+}
+
+func getProviderDisplayName(pID string) string {
+	switch strings.ToLower(pID) {
+	case "antigravity", "agy":
+		return "Antigravity (Google Cloud Vertex AI)"
+	case "kiro":
+		return "Kiro (AWS Bedrock CodeWhisperer)"
+	case "codex":
+		return "Codex (OpenAI ChatGPT Core)"
+	case "openai":
+		return "OpenAI Native API"
+	case "mistral":
+		return "Mistral AI"
+	case "agentrouter":
+		return "AgentRouter Gateway"
+	case "tokenrouter":
+		return "TokenRouter API"
+	case "xkiro":
+		return "XKiro API"
+	case "combo":
+		return "GoRoute Failover Combo"
+	default:
+		if pID == "" || pID == "goroute" || pID == "auto" {
+			return "GoRoute Auto Affinity"
+		}
+		return fmt.Sprintf("%s Provider", strings.ToUpper(pID))
+	}
+}
+
+func ResolveModel(home string, modelInput string, prefProvider string, fallbackDefault string) ResolvedModelInfo {
+	if modelInput == "" {
+		modelInput = fallbackDefault
+	}
+	modelInput = strings.TrimSpace(modelInput)
+
+	// Strip common client prefixes
+	for _, p := range []string{"goroute/", "gr/", "omniroute/"} {
+		if strings.HasPrefix(modelInput, p) {
+			modelInput = strings.TrimPrefix(modelInput, p)
+			break
+		}
+	}
+
+	var provID, modelName string
+	if strings.Contains(modelInput, "/") {
+		parts := strings.SplitN(modelInput, "/", 2)
+		provID = parts[0]
+		modelName = parts[1]
+	} else {
+		modelName = modelInput
+	}
+
+	if prefProvider != "" && prefProvider != "auto" && provID == "" {
+		provID = prefProvider
+	}
+
+	// Check if this model is a configured combo
+	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
+	if cfg, err := config.Load(cfgPath); err == nil && cfg != nil {
+		for _, combo := range cfg.Combos {
+			if strings.EqualFold(combo.Name, modelName) {
+				return ResolvedModelInfo{
+					FullID:       combo.Name,
+					ProviderID:   "combo",
+					ModelName:    combo.Name,
+					DisplayName:  fmt.Sprintf("%s (Failover Combo)", combo.Name),
+					ProviderName: fmt.Sprintf("GoRoute Combo (%s)", combo.Strategy),
+					IsCombo:      true,
+					ContextLen:   200000,
+					OutputLen:    8192,
+				}
+			}
+		}
+	}
+	for _, cName := range []string{"claude-models", "claude", "auto", "deepseek", "claude-opus"} {
+		if strings.EqualFold(cName, modelName) {
+			return ResolvedModelInfo{
+				FullID:       cName,
+				ProviderID:   "combo",
+				ModelName:    cName,
+				DisplayName:  fmt.Sprintf("%s (Failover Combo)", cName),
+				ProviderName: "GoRoute Failover Combo",
+				IsCombo:      true,
+				ContextLen:   200000,
+				OutputLen:    8192,
+			}
+		}
+	}
+
+	// Resolve based on model affinity if no provider is designated
+	if provID == "" || provID == "auto" {
+		lower := strings.ToLower(modelName)
+		if strings.Contains(lower, "gemini") {
+			provID = "antigravity"
+		} else if strings.Contains(lower, "claude") || strings.Contains(lower, "sonnet") || strings.Contains(lower, "opus") || strings.Contains(lower, "haiku") {
+			provID = "kiro"
+		} else if strings.Contains(lower, "gpt") || strings.Contains(lower, "o1") || strings.Contains(lower, "o3") || strings.Contains(lower, "codex") {
+			provID = "codex"
+		} else if strings.Contains(lower, "deepseek") || strings.Contains(lower, "qwen") {
+			provID = "kiro"
+		} else {
+			provID = "goroute"
+		}
+	}
+
+	fullID := modelName
+	if provID != "goroute" && provID != "" {
+		fullID = fmt.Sprintf("%s/%s", provID, modelName)
+	}
+
+	ctxLen := 128000
+	if strings.Contains(modelName, "gemini") {
+		ctxLen = 1048576
+	} else if strings.Contains(modelName, "claude") {
+		ctxLen = 200000
+	}
+
+	return ResolvedModelInfo{
+		FullID:       fullID,
+		ProviderID:   provID,
+		ModelName:    modelName,
+		DisplayName:  fmt.Sprintf("%s (%s)", modelName, provID),
+		ProviderName: getProviderDisplayName(provID),
+		IsCombo:      false,
+		ContextLen:   ctxLen,
+		OutputLen:    8192,
+	}
+}
+
+func getAllGoRouteModels(home string) map[string]string {
+	models := map[string]string{
+		// Antigravity (Google Cloud Vertex) models
+		"antigravity/gemini-2.5-flash":         "Gemini 2.5 Flash (Antigravity)",
+		"antigravity/gemini-3.8-flash-high":    "Gemini 3.8 Flash High (Antigravity)",
+		"antigravity/gemini-2.5-pro":           "Gemini 2.5 Pro (Antigravity)",
+		"antigravity/gemini-3-flash":           "Gemini 3 Flash (Antigravity)",
+		"antigravity/gemini-3.1-flash-lite":    "Gemini 3.1 Flash Lite (Antigravity)",
+		"antigravity/claude-3-7-sonnet":        "Claude 3.7 Sonnet (Antigravity)",
+		"antigravity/claude-3-5-sonnet":        "Claude 3.5 Sonnet (Antigravity)",
+		"antigravity/claude-sonnet-4-6":        "Claude Sonnet 4.6 (Antigravity)",
+		"antigravity/claude-opus-4-6-thinking": "Claude Opus 4.6 Thinking (Antigravity)",
+		"antigravity/gpt-oss-120b-medium":      "GPT-OSS 120B (Antigravity)",
+
+		// Kiro (AWS Bedrock) models
+		"kiro/claude-3-7-sonnet": "Claude 3.7 Sonnet (Kiro)",
+		"kiro/claude-sonnet-4.5": "Claude Sonnet 4.5 (Kiro)",
+		"kiro/claude-haiku-4.5":  "Claude Haiku 4.5 (Kiro)",
+		"kiro/deepseek-3.2":      "DeepSeek 3.2 (Kiro)",
+		"kiro/qwen3-coder-next":  "Qwen3 Coder Next (Kiro)",
+		"kiro/gpt-5.6-luna":      "GPT-5.6 Luna (Kiro)",
+
+		// Codex (OpenAI) models
+		"codex/gpt-5.6-sol":      "GPT-5.6 Sol (Codex)",
+		"codex/gpt-5.6-sol-high": "GPT-5.6 Sol High (Codex)",
+		"codex/o3-mini":          "o3-mini (Codex)",
+		"codex/o1":               "o1 (Codex)",
+		"codex/gpt-4o":           "GPT-4o (Codex)",
+
+		// Curated un-prefixed auto aliases
+		"claude-3-7-sonnet":     "Claude 3.7 Sonnet (Auto Affinity)",
+		"claude-3-5-sonnet":     "Claude 3.5 Sonnet (Auto Affinity)",
+		"gemini-2.5-flash":      "Gemini 2.5 Flash (Auto Affinity)",
+		"gemini-2.5-pro":        "Gemini 2.5 Pro (Auto Affinity)",
+		"gemini-3.8-flash-high": "Gemini 3.8 Flash High (Auto Affinity)",
+		"gpt-4o":                "GPT-4o (Auto Affinity)",
+	}
+
+	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
+	if cfg, err := config.Load(cfgPath); err == nil && cfg != nil {
+		for _, combo := range cfg.Combos {
+			models[combo.Name] = fmt.Sprintf("%s (Failover Combo)", combo.Name)
+		}
+		for _, p := range cfg.Providers {
+			if p.Type == "openai" {
+				models[p.ID+"/default"] = fmt.Sprintf("%s (OpenAI-compatible)", p.ID)
+			}
+		}
+	}
+	return models
 }
 
 func setupClaude(home string, opts AgentSetupOptions) error {
@@ -187,6 +381,8 @@ func setupClaude(home string, opts AgentSetupOptions) error {
 		targetKey = opts.APIKey
 	}
 
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+
 	data["customBaseUrl"] = targetURL
 
 	env, ok := data["env"].(map[string]interface{})
@@ -195,11 +391,9 @@ func setupClaude(home string, opts AgentSetupOptions) error {
 	}
 	env["ANTHROPIC_BASE_URL"] = targetURL
 	env["ANTHROPIC_API_KEY"] = targetKey
-	if opts.Model != "" {
-		data["model"] = opts.Model
-		env["ANTHROPIC_MODEL"] = opts.Model
-		env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = opts.Model
-	}
+	data["model"] = primary.FullID
+	env["ANTHROPIC_MODEL"] = primary.FullID
+	env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = primary.FullID
 	data["env"] = env
 
 	bytes, err := json.MarshalIndent(data, "", "  ")
@@ -210,14 +404,48 @@ func setupClaude(home string, opts AgentSetupOptions) error {
 		return err
 	}
 
-	fmt.Println("✅ Configured Claude Code!")
-	fmt.Printf("   Updated settings at: %s\n", settingsPath)
-	if opts.Model != "" {
-		fmt.Printf("   Active model set to: %s\n", opts.Model)
+	// Generate profile directories under ~/.claude/profiles/ for 1-click launch
+	profilesDir := filepath.Join(claudeDir, "profiles")
+	_ = os.MkdirAll(profilesDir, 0700)
+	namedProfiles := []struct {
+		Name     string
+		Model    string
+		Provider string
+	}{
+		{"kiro", "kiro/claude-3-7-sonnet", "Kiro"},
+		{"antigravity", "antigravity/claude-sonnet-4-6", "Antigravity"},
+		{"claude-models", "claude-models", "GoRoute Combo"},
+		{"gemini", "antigravity/gemini-2.5-flash", "Antigravity"},
 	}
-	fmt.Println("   Preserved all existing hooks, plugins, and custom configurations.")
+	for _, p := range namedProfiles {
+		pDir := filepath.Join(profilesDir, p.Name)
+		_ = os.MkdirAll(pDir, 0700)
+		pSettings := map[string]interface{}{
+			"$schema": "https://json.schemastore.org/claude-code-settings.json",
+			"model":   p.Model,
+			"env": map[string]interface{}{
+				"ANTHROPIC_BASE_URL":                         targetURL,
+				"ANTHROPIC_API_KEY":                          targetKey,
+				"ANTHROPIC_MODEL":                            p.Model,
+				"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+			},
+		}
+		if pBytes, err := json.MarshalIndent(pSettings, "", "  "); err == nil {
+			_ = os.WriteFile(filepath.Join(pDir, "settings.json"), pBytes, 0600)
+		}
+	}
+
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Claude Code CLI")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Gateway Base URL:   %s\n", targetURL)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
+	fmt.Printf("  Settings File:      %s\n", settingsPath)
+	fmt.Printf("  Named Profiles:     %s (kiro, antigravity, claude-models, gemini)\n", profilesDir)
 	fmt.Println("\nLaunch with:")
 	fmt.Println("  claude")
+	fmt.Printf("  OR: CLAUDE_CONFIG_DIR=%s/antigravity claude\n", profilesDir)
 	return nil
 }
 
@@ -227,10 +455,8 @@ func setupCodex(home string, opts AgentSetupOptions) error {
 	profilePath := filepath.Join(codexDir, "goroute.config.toml")
 	configPath := filepath.Join(codexDir, "config.toml")
 
-	modelName := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		modelName = opts.Model
-	}
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+
 	targetURL := "http://127.0.0.1:8128/v1"
 	if opts.BaseURL != "" {
 		targetURL = opts.BaseURL
@@ -239,7 +465,7 @@ func setupCodex(home string, opts AgentSetupOptions) error {
 	tomlContent := fmt.Sprintf(`# GoRoute Configuration for OpenAI Codex CLI
 model = "%s"
 model_provider = "goroute"
-model_context_window = 131072
+model_context_window = %d
 model_auto_compact_token_limit = 112000
 tool_output_token_limit = 32768
 
@@ -249,7 +475,7 @@ base_url = "%s"
 env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 requires_openai_auth = false
-`, modelName, targetURL)
+`, primary.FullID, primary.ContextLen, targetURL)
 
 	if err := os.WriteFile(profilePath, []byte(tomlContent), 0600); err != nil {
 		return err
@@ -265,50 +491,17 @@ requires_openai_auth = false
 		}
 	}
 
-	fmt.Println("✅ Configured OpenAI Codex CLI!")
-	fmt.Printf("   Wrote profile to: %s\n", profilePath)
-	fmt.Printf("   Active model: %s\n", modelName)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: OpenAI Codex CLI")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Gateway Base URL:   %s\n", targetURL)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
+	fmt.Printf("  Profile Path:       %s\n", profilePath)
 	fmt.Println("\nLaunch with:")
 	fmt.Println("  goroute run codex")
 	fmt.Println("  OR: codex --profile goroute")
 	return nil
-}
-
-func getAllGoRouteModels(home string) map[string]string {
-	models := map[string]string{
-		"agy/gemini-flash-3-8":      "Gemini 3.8 Flash High (Antigravity)",
-		"agy/claude-opus-4-6":       "Claude Opus 4.6 Thinking (Antigravity)",
-		"agy/claude-sonnet-4-6":     "Claude Sonnet 4.6 (Antigravity)",
-		"agy/gemini-pro-agent":      "Gemini Pro Agent (Antigravity)",
-		"agy/gemini-3-flash":        "Gemini 3 Flash (Antigravity)",
-		"agy/gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite (Antigravity)",
-		"agy/gpt-oss-120b-medium":   "GPT-OSS 120B Medium (Antigravity)",
-		"claude-3-7-sonnet":         "Claude 3.7 Sonnet (Auto/Failover)",
-		"claude-3-5-sonnet":         "Claude 3.5 Sonnet",
-		"claude-sonnet-4-6":         "Claude Sonnet 4.6 (Live Native)",
-		"claude-opus-4-6-thinking":  "Claude Opus 4.6 (Thinking)",
-		"gemini-2.5-pro":            "Gemini 2.5 Pro (Deep Reasoning)",
-		"gemini-2.5-flash":          "Gemini 2.5 Flash (Sub-Second)",
-		"gemini-3.8-flash-high":     "Gemini 3.8 Flash High",
-		"gemini-3-flash":            "Gemini 3 Flash",
-		"gemini-3.1-flash-lite":     "Gemini 3.1 Flash Lite",
-		"gpt-oss-120b-medium":       "GPT-OSS 120B (Open Weights)",
-	}
-
-	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
-	if cfg, err := config.Load(cfgPath); err == nil {
-		for _, combo := range cfg.Combos {
-			if _, exists := models[combo.Name]; !exists {
-				models[combo.Name] = fmt.Sprintf("%s (GoRoute Combo)", combo.Name)
-			}
-		}
-		for _, p := range cfg.Providers {
-			if p.Type == "openai" {
-				models[p.ID+"/default"] = fmt.Sprintf("%s (Upstream Provider)", p.ID)
-			}
-		}
-	}
-	return models
 }
 
 func setupOpenCode(home string, opts AgentSetupOptions) error {
@@ -321,14 +514,8 @@ func setupOpenCode(home string, opts AgentSetupOptions) error {
 		apiKey = opts.APIKey
 	}
 
-	primaryModel := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		primaryModel = opts.Model
-	}
-	smallModel := "gemini-2.5-flash"
-	if opts.SmallModel != "" {
-		smallModel = opts.SmallModel
-	}
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+	small := ResolveModel(home, opts.SmallModel, opts.Provider, "gemini-2.5-flash")
 
 	// 1. Register gr and goroute credentials in ~/.local/share/opencode/auth.json
 	authDir := filepath.Join(home, ".local", "share", "opencode")
@@ -360,26 +547,47 @@ func setupOpenCode(home string, opts AgentSetupOptions) error {
 			if m == "" {
 				continue
 			}
-			label := m
-			if knownLabel, ok := allModels[m]; ok {
-				label = knownLabel
-			} else {
-				label = fmt.Sprintf("%s (GoRoute)", m)
+			resolved := ResolveModel(home, m, opts.Provider, m)
+			modelsMap[resolved.FullID] = map[string]interface{}{
+				"name": resolved.DisplayName,
+				"limit": map[string]interface{}{
+					"context": resolved.ContextLen,
+					"output":  resolved.OutputLen,
+				},
 			}
-			modelsMap[m] = map[string]interface{}{"name": label}
-		}
-		if _, ok := modelsMap[primaryModel]; !ok {
-			modelsMap[primaryModel] = map[string]interface{}{"name": primaryModel + " (Primary)"}
-		}
-		if _, ok := modelsMap[smallModel]; !ok {
-			modelsMap[smallModel] = map[string]interface{}{"name": smallModel + " (Fast)"}
 		}
 	} else {
 		for modelID, modelName := range allModels {
+			ctxLen := 128000
+			if strings.Contains(modelID, "gemini") {
+				ctxLen = 1048576
+			} else if strings.Contains(modelID, "claude") {
+				ctxLen = 200000
+			}
 			modelsMap[modelID] = map[string]interface{}{
 				"name": modelName,
+				"limit": map[string]interface{}{
+					"context": ctxLen,
+					"output":  8192,
+				},
 			}
 		}
+	}
+
+	// Ensure primary and small models are present in the models map
+	modelsMap[primary.FullID] = map[string]interface{}{
+		"name": primary.DisplayName,
+		"limit": map[string]interface{}{
+			"context": primary.ContextLen,
+			"output":  primary.OutputLen,
+		},
+	}
+	modelsMap[small.FullID] = map[string]interface{}{
+		"name": small.DisplayName,
+		"limit": map[string]interface{}{
+			"context": small.ContextLen,
+			"output":  small.OutputLen,
+		},
 	}
 
 	// 3. Configure ~/.config/opencode/opencode.json
@@ -411,14 +619,14 @@ func setupOpenCode(home string, opts AgentSetupOptions) error {
 	providers["goroute"] = grProvider
 
 	existing["provider"] = providers
-	existing["model"] = "gr/" + primaryModel
-	existing["small_model"] = "gr/" + smallModel
+	existing["model"] = "goroute/" + primary.FullID
+	existing["small_model"] = "goroute/" + small.FullID
 	existing["agent"] = map[string]interface{}{
 		"build": map[string]interface{}{
-			"model": "gr/" + primaryModel,
+			"model": "goroute/" + primary.FullID,
 		},
 		"plan": map[string]interface{}{
-			"model": "gr/" + primaryModel,
+			"model": "goroute/" + primary.FullID,
 		},
 	}
 
@@ -439,25 +647,40 @@ func setupOpenCode(home string, opts AgentSetupOptions) error {
 			p["gr"] = grProvider
 			p["goroute"] = grProvider
 			existingJsonc["provider"] = p
-			existingJsonc["model"] = "gr/" + primaryModel
-			existingJsonc["small_model"] = "gr/" + smallModel
+			existingJsonc["model"] = "goroute/" + primary.FullID
+			existingJsonc["small_model"] = "goroute/" + small.FullID
 			if jBytes, err := json.MarshalIndent(existingJsonc, "", "  "); err == nil {
 				_ = os.WriteFile(jsoncPath, jBytes, 0600)
 			}
 		}
 	}
 
-	fmt.Println("✅ Configured OpenCode!")
-	fmt.Printf("   Configured %d GoRoute models across providers:\n", len(modelsMap))
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: OpenCode CLI")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Gateway Base URL:   %s\n", baseURL)
+	fmt.Printf("  Primary Model:      goroute/%s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
+	fmt.Printf("  Fast/Small Model:   goroute/%s\n", small.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", small.ProviderName)
+	fmt.Printf("  OpenCode Provider:  \"goroute\" (and \"gr\" alias)\n")
+	fmt.Printf("  Config File:        %s\n", configPath)
+	fmt.Printf("  Auth Secrets:       %s\n", authPath)
+	fmt.Printf("\n  Configured %d GoRoute models across providers:\n", len(modelsMap))
+	count := 0
 	for m := range modelsMap {
-		fmt.Printf("   • gr/%s\n", m)
+		if count < 8 {
+			fmt.Printf("  • goroute/%s\n", m)
+			count++
+		}
 	}
-	fmt.Printf("   Wrote configuration to: %s\n", configPath)
-	fmt.Printf("   Authenticated provider key in: %s\n", authPath)
-	fmt.Printf("   Active model set to: gr/%s\n", primaryModel)
-	fmt.Printf("   Small model set to:  gr/%s\n", smallModel)
-	fmt.Println("   Uniform format: gr/agy/gemini-flash-3-8, gr/agy/claude-opus-4-6, etc.")
-	fmt.Println("   Launch with: opencode (or goroute run opencode)")
+	if len(modelsMap) > 8 {
+		fmt.Printf("  ... and %d more models\n", len(modelsMap)-8)
+	}
+	fmt.Println("\nLaunch with:")
+	fmt.Printf("  opencode\n")
+	fmt.Printf("  OR: opencode -m goroute/%s\n", primary.FullID)
+	fmt.Println("  OR: goroute run opencode")
 	return nil
 }
 
@@ -474,6 +697,8 @@ func setupCursor(home string, opts AgentSetupOptions) error {
 		apiKey = opts.APIKey
 	}
 
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+
 	if _, err := os.Stat(cursorDir); err == nil {
 		existing := make(map[string]interface{})
 		if raw, err := os.ReadFile(settingsPath); err == nil {
@@ -481,24 +706,21 @@ func setupCursor(home string, opts AgentSetupOptions) error {
 		}
 		existing["cursor.openaiBaseUrl"] = baseURL
 		existing["cursor.openaiApiKey"] = apiKey
-		if opts.Model != "" {
-			existing["cursor.model"] = opts.Model
-		}
+		existing["cursor.model"] = primary.FullID
 		if bytes, err := json.MarshalIndent(existing, "", "  "); err == nil {
 			_ = os.WriteFile(settingsPath, bytes, 0600)
 			fmt.Printf("✅ Updated Cursor settings at: %s\n", settingsPath)
 		}
 	}
 
-	fmt.Println("✅ Cursor IDE Configuration Details:")
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Cursor IDE")
+	fmt.Println("======================================================================")
 	fmt.Println("  1. Open Cursor Settings (Ctrl+,) → Models")
 	fmt.Printf("  2. Turn on 'Override OpenAI Base URL' and enter: %s\n", baseURL)
 	fmt.Printf("  3. Set 'OpenAI API Key' to: %s\n", apiKey)
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
-	fmt.Printf("  4. Add model: %s\n", model)
+	fmt.Printf("  4. Add model: %s\n", primary.FullID)
+	fmt.Printf("     └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -517,13 +739,11 @@ func setupCline(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
-	planModel := model
+
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+	plan := primary
 	if opts.SmallModel != "" {
-		planModel = opts.SmallModel
+		plan = ResolveModel(home, opts.SmallModel, opts.Provider, "gemini-2.5-flash")
 	}
 
 	secrets := map[string]string{"openAiApiKey": apiKey}
@@ -534,15 +754,21 @@ func setupCline(home string, opts AgentSetupOptions) error {
 		"actModeApiProvider":    "openai",
 		"planModeApiProvider":   "openai",
 		"openAiBaseUrl":         baseURL,
-		"openAiModelId":         model,
-		"planModeOpenAiModelId": planModel,
+		"openAiModelId":         primary.FullID,
+		"planModeOpenAiModelId": plan.FullID,
 	}
 	stBytes, _ := json.MarshalIndent(state, "", "  ")
 	_ = os.WriteFile(statePath, stBytes, 0600)
 
-	fmt.Println("✅ Configured Cline CLI & Standalone Mode!")
-	fmt.Printf("   Wrote secrets to: %s\n", secretsPath)
-	fmt.Printf("   Active model set to: %s\n", model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Cline CLI & Standalone")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Gateway Base URL:   %s\n", baseURL)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
+	fmt.Printf("  Plan Model:         %s\n", plan.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", plan.ProviderName)
+	fmt.Printf("  Secrets Path:       %s\n", secretsPath)
 	return nil
 }
 
@@ -559,10 +785,8 @@ func setupRoo(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
+
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
 
 	importDoc := map[string]interface{}{
 		"providerProfiles": map[string]interface{}{
@@ -572,7 +796,7 @@ func setupRoo(home string, opts AgentSetupOptions) error {
 					"apiProvider":   "openai",
 					"openAiBaseUrl": baseURL,
 					"openAiApiKey":  apiKey,
-					"openAiModelId": model,
+					"openAiModelId": primary.FullID,
 				},
 			},
 		},
@@ -582,8 +806,12 @@ func setupRoo(home string, opts AgentSetupOptions) error {
 		return err
 	}
 
-	fmt.Println("✅ Generated Roo Code Import Document!")
-	fmt.Printf("   Wrote file to: %s (Active model: %s)\n", importPath, model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Roo Code")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Import Document:    %s\n", importPath)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -600,16 +828,14 @@ func setupKilo(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
+
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
 
 	auth := map[string]interface{}{
 		"openai-compatible": map[string]string{
 			"apiKey":  apiKey,
 			"baseUrl": baseURL,
-			"model":   model,
+			"model":   primary.FullID,
 		},
 	}
 	bytes, _ := json.MarshalIndent(auth, "", "  ")
@@ -617,8 +843,12 @@ func setupKilo(home string, opts AgentSetupOptions) error {
 		return err
 	}
 
-	fmt.Println("✅ Configured Kilo Code!")
-	fmt.Printf("   Wrote configuration to: %s (Active model: %s)\n", authPath, model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Kilo Code")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config Path:        %s\n", authPath)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -633,18 +863,20 @@ func setupAider(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
 
-	content := fmt.Sprintf("openai-api-base: %s\nopenai-api-key: %s\nmodel: openai/%s\n", baseURL, apiKey, model)
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+
+	content := fmt.Sprintf("openai-api-base: %s\nopenai-api-key: %s\nmodel: openai/%s\n", baseURL, apiKey, primary.FullID)
 	if err := os.WriteFile(aiderConf, []byte(content), 0600); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Configured Aider!")
-	fmt.Printf("   Wrote configuration to: %s (Model: %s)\n", aiderConf, model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Aider")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", aiderConf)
+	fmt.Printf("  Active Model:       openai/%s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -661,14 +893,9 @@ func setupContinue(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	primaryModel := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		primaryModel = opts.Model
-	}
-	smallModel := "gemini-2.5-pro"
-	if opts.SmallModel != "" {
-		smallModel = opts.SmallModel
-	}
+
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+	small := ResolveModel(home, opts.SmallModel, opts.Provider, "gemini-2.5-flash")
 
 	content := fmt.Sprintf(`name: GoRoute Config
 version: "1.0"
@@ -686,14 +913,20 @@ models:
     apiBase: %s
     apiKey: %s
     roles: [chat, edit, apply]
-`, primaryModel, primaryModel, baseURL, apiKey, smallModel, smallModel, baseURL, apiKey)
+`, primary.FullID, primary.FullID, baseURL, apiKey, small.FullID, small.FullID, baseURL, apiKey)
 
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Configured Continue (continue.dev & cn CLI)!")
-	fmt.Printf("   Wrote configuration to: %s\n", confPath)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Continue (continue.dev & cn CLI)")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", confPath)
+	fmt.Printf("  Primary Model:      %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
+	fmt.Printf("  Fast/Small Model:   %s\n", small.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", small.ProviderName)
 	return nil
 }
 
@@ -710,10 +943,8 @@ func setupCrush(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	primaryModel := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		primaryModel = opts.Model
-	}
+
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
 
 	content := fmt.Sprintf(`{
   "providers": {
@@ -722,20 +953,23 @@ func setupCrush(home string, opts AgentSetupOptions) error {
       "base_url": "%s",
       "api_key": "%s",
       "models": [
-        {"id": "%s", "name": "GoRoute %s"},
-        {"id": "gemini-2.5-pro", "name": "GoRoute Gemini 2.5 Pro"}
+        {"id": "%s", "name": "GoRoute %s"}
       ]
     }
   }
 }
-`, baseURL, apiKey, primaryModel, primaryModel)
+`, baseURL, apiKey, primary.FullID, primary.DisplayName)
 
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Configured Charm Crush!")
-	fmt.Printf("   Wrote configuration to: %s\n", confPath)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Charm Crush")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", confPath)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -748,18 +982,20 @@ func setupGoose(home string, opts AgentSetupOptions) error {
 	if opts.BaseURL != "" {
 		baseURL = strings.TrimSuffix(opts.BaseURL, "/v1")
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
 
-	content := fmt.Sprintf("GOOSE_PROVIDER: openai\nOPENAI_HOST: %s\nGOOSE_MODEL: %s\n", baseURL, model)
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+
+	content := fmt.Sprintf("GOOSE_PROVIDER: openai\nOPENAI_HOST: %s\nGOOSE_MODEL: %s\n", baseURL, primary.FullID)
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Configured Goose!")
-	fmt.Printf("   Wrote configuration to: %s (Model: %s)\n", confPath, model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Goose")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", confPath)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -776,23 +1012,25 @@ func setupQwen(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
+
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
 
 	data := map[string]string{
 		"baseUrl": baseURL,
 		"apiKey":  apiKey,
-		"model":   model,
+		"model":   primary.FullID,
 	}
 	bytes, _ := json.MarshalIndent(data, "", "  ")
 	if err := os.WriteFile(confPath, bytes, 0600); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Configured Qwen Code!")
-	fmt.Printf("   Wrote configuration to: %s (Model: %s)\n", confPath, model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Qwen Code")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", confPath)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -806,10 +1044,12 @@ func setupGemini(home string, opts AgentSetupOptions) error {
 		apiKey = opts.APIKey
 	}
 
-	fmt.Println("✅ Google Gemini CLI Configuration:")
-	fmt.Printf("   Set the following environment variables in your shell:\n")
-	fmt.Printf("     export GOOGLE_GEMINI_BASE_URL=\"%s\"\n", baseURL)
-	fmt.Printf("     export GEMINI_API_KEY=\"%s\"\n", apiKey)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Google Gemini CLI")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Set the following environment variables in your shell:\n")
+	fmt.Printf("    export GOOGLE_GEMINI_BASE_URL=\"%s\"\n", baseURL)
+	fmt.Printf("    export GEMINI_API_KEY=\"%s\"\n", apiKey)
 	return nil
 }
 
@@ -818,18 +1058,19 @@ func setup5dive(home string, opts AgentSetupOptions) error {
 	if opts.BaseURL != "" {
 		baseURL = strings.TrimSuffix(opts.BaseURL, "/v1")
 	}
-	model := "claude-3-7-sonnet"
-	if opts.Model != "" {
-		model = opts.Model
-	}
 
-	fmt.Println("✅ 5dive Agent Fleet Configuration:")
-	fmt.Println("   To connect your 5dive agent fleet to GoRoute, run:")
-	fmt.Printf("     5dive agent auth set claude \\\n")
-	fmt.Printf("       --provider=openai \\\n")
-	fmt.Printf("       --base-url=%s \\\n", baseURL)
-	fmt.Printf("       --auth-profile=goroute \\\n")
-	fmt.Printf("       --model=%s\n", model)
+	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: 5dive Agent Fleet")
+	fmt.Println("======================================================================")
+	fmt.Println("  To connect your 5dive agent fleet to GoRoute, run:")
+	fmt.Printf("    5dive agent auth set claude \\\n")
+	fmt.Printf("      --provider=openai \\\n")
+	fmt.Printf("      --base-url=%s \\\n", baseURL)
+	fmt.Printf("      --auth-profile=goroute \\\n")
+	fmt.Printf("      --model=%s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -852,12 +1093,10 @@ func setupHermes(home string, opts AgentSetupOptions) error {
 	if opts.APIKey != "" {
 		apiKey = opts.APIKey
 	}
-	model := "gemini-flash"
-	if opts.Model != "" {
-		model = opts.Model
-	}
 
-	gorouteBlock := fmt.Sprintf("providers:\n  goroute:\n    base_url: %s\n    api_key: %s\n    default_model: %s\n", baseURL, apiKey, model)
+	primary := ResolveModel(home, opts.Model, opts.Provider, "gemini-2.5-flash")
+
+	gorouteBlock := fmt.Sprintf("providers:\n  goroute:\n    base_url: %s\n    api_key: %s\n    default_model: %s\n", baseURL, apiKey, primary.FullID)
 	if strings.Contains(content, "providers:") {
 		if !strings.Contains(content, "goroute:") {
 			content = strings.Replace(content, "providers:", gorouteBlock, 1)
@@ -870,8 +1109,12 @@ func setupHermes(home string, opts AgentSetupOptions) error {
 		return err
 	}
 
-	fmt.Println("✅ Configured Hermes Agent!")
-	fmt.Printf("   Wrote provider configuration to: %s\n", cfgFile)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: Hermes Agent")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", cfgFile)
+	fmt.Printf("  Active Model:       %s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 
@@ -902,10 +1145,7 @@ func setupOpenClaw(home string, opts AgentSetupOptions) error {
 		}
 	}
 
-	model := "gemini-flash"
-	if opts.Model != "" {
-		model = opts.Model
-	}
+	primary := ResolveModel(home, opts.Model, opts.Provider, "gemini-2.5-flash")
 
 	// 2. Configure agents defaults
 	agents, ok := root["agents"].(map[string]interface{})
@@ -923,9 +1163,9 @@ func setupOpenClaw(home string, opts AgentSetupOptions) error {
 		models = make(map[string]interface{})
 		defaults["models"] = models
 	}
-	models["goroute/"+model] = map[string]interface{}{}
+	models["goroute/"+primary.FullID] = map[string]interface{}{}
 	defaults["model"] = map[string]interface{}{
-		"primary": "goroute/" + model,
+		"primary": "goroute/" + primary.FullID,
 	}
 
 	out, err := json.MarshalIndent(root, "", "    ")
@@ -936,8 +1176,12 @@ func setupOpenClaw(home string, opts AgentSetupOptions) error {
 		return err
 	}
 
-	fmt.Println("✅ Configured OpenClaw Autonomous Gateway!")
-	fmt.Printf("   Cleaned and updated: %s (Primary: goroute/%s)\n", cfgFile, model)
+	fmt.Println("======================================================================")
+	fmt.Println("  GoRoute Agent Configuration: OpenClaw Autonomous Gateway")
+	fmt.Println("======================================================================")
+	fmt.Printf("  Config File:        %s\n", cfgFile)
+	fmt.Printf("  Active Model:       goroute/%s\n", primary.FullID)
+	fmt.Printf("    └─ Upstream Provider: %s\n", primary.ProviderName)
 	return nil
 }
 

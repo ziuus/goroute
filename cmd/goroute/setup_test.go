@@ -47,6 +47,7 @@ func TestAgentSetupWithOptions(t *testing.T) {
 	tempHome := t.TempDir()
 
 	opts := AgentSetupOptions{
+		Provider:   "antigravity",
 		Model:      "gemini-2.5-flash",
 		SmallModel: "gemini-3.1-flash-lite",
 		Models:     []string{"gemini-2.5-flash", "gemini-3.1-flash-lite", "deepseek"},
@@ -61,24 +62,25 @@ func TestAgentSetupWithOptions(t *testing.T) {
 		t.Fatalf("failed to read opencode.json: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "gr/gemini-2.5-flash") {
-		t.Errorf("expected primary model gr/gemini-2.5-flash in config, got: %s", content)
+	if !strings.Contains(content, "antigravity/gemini-2.5-flash") {
+		t.Errorf("expected primary model antigravity/gemini-2.5-flash in config, got: %s", content)
 	}
-	if !strings.Contains(content, "gr/gemini-3.1-flash-lite") {
-		t.Errorf("expected small model gr/gemini-3.1-flash-lite in config, got: %s", content)
+	if !strings.Contains(content, "antigravity/gemini-3.1-flash-lite") {
+		t.Errorf("expected small model antigravity/gemini-3.1-flash-lite in config, got: %s", content)
 	}
 
-	claudeOpts := AgentSetupOptions{
-		Model: "gemini-3.8-flash-high",
+	// Test explicit kiro model selection
+	kiroOpts := AgentSetupOptions{
+		Model: "kiro/claude-3-7-sonnet",
 	}
-	if err := setupClaude(tempHome, claudeOpts); err != nil {
-		t.Fatalf("setupClaude with custom options failed: %v", err)
+	if err := setupClaude(tempHome, kiroOpts); err != nil {
+		t.Fatalf("setupClaude with kiro options failed: %v", err)
 	}
 	cData, err := os.ReadFile(filepath.Join(tempHome, ".claude", "settings.json"))
 	if err != nil {
 		t.Fatalf("failed to read claude settings.json: %v", err)
 	}
-	if !strings.Contains(string(cData), "gemini-3.8-flash-high") {
-		t.Errorf("expected claude settings to contain gemini-3.8-flash-high, got: %s", string(cData))
+	if !strings.Contains(string(cData), "kiro/claude-3-7-sonnet") {
+		t.Errorf("expected claude settings to contain kiro/claude-3-7-sonnet, got: %s", string(cData))
 	}
 }

@@ -4827,6 +4827,7 @@ func (s *Server) handleConfigureCliAgent(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req struct {
+		Provider   string   `json:"provider"`
 		Model      string   `json:"model"`
 		SmallModel string   `json:"small_model"`
 		Models     []string `json:"models"`
@@ -4836,6 +4837,9 @@ func (s *Server) handleConfigureCliAgent(w http.ResponseWriter, r *http.Request)
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	args := []string{"setup", id}
+	if req.Provider != "" {
+		args = append(args, "--provider", req.Provider)
+	}
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
 	}
