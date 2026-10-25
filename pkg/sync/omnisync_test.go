@@ -20,6 +20,10 @@ func TestDecryptOmniCredential(t *testing.T) {
 
 func TestSyncLive(t *testing.T) {
 	home, _ := os.UserHomeDir()
+	omniDB := filepath.Join(home, ".omniroute", "storage.sqlite")
+	if _, err := os.Stat(omniDB); os.IsNotExist(err) {
+		t.Skip("skipping TestSyncLive: omniroute database not present on this machine")
+	}
 	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
 	res, err := SyncFromOmniRoute(cfgPath)
 	if err != nil {
