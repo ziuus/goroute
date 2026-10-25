@@ -496,14 +496,19 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 
 		// Upstream target failed (4xx or 5xx): close body, mark cooldown, and cascade!
 		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d, cooling down and trying next target...", target.ProviderID, target.Model, statusCode)
-		if statusCode == http.StatusTooManyRequests || statusCode == http.StatusPaymentRequired || statusCode >= 500 {
-			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, fmt.Sprintf("HTTP %d", statusCode), 10*time.Minute)
+		// For 429 quota exhaustion or 400 schema mismatches, mark cooldown and try next target
+		cooldownDuration := 10 * time.Minute
+		if statusCode == 400 {
+			cooldownDuration = 3 * time.Minute
 		}
+		resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, fmt.Sprintf("HTTP %d", statusCode), cooldownDuration)
 		if body != nil {
 			body.Close()
 		}
 		lastStatus = statusCode
 		lastErr = fmt.Errorf("target %s/%s returned HTTP %d", target.ProviderID, target.Model, statusCode)
+		// Continue cascade loop to next target!
+		continue
 	}
 
 	if lastErr != nil {
