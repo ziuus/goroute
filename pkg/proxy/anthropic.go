@@ -132,7 +132,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		Stream:      req.Stream,
 		MaxTokens:   maxTokensPtr,
 		Temperature: req.Temperature,
-		Tools:       req.Tools,
+		Tools:       translateAnthropicToolsToOpenAI(req.Tools),
 		ToolChoice:  req.ToolChoice,
 		Messages:    make([]providers.ChatMessage, 0, len(req.Messages)+1),
 	}
@@ -160,13 +160,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Extract messages (preserving multimodal images and blocks)
-	for _, m := range req.Messages {
-		chatReq.Messages = append(chatReq.Messages, providers.ChatMessage{
-			Role:    m.Role,
-			Content: m.Content,
-		})
-	}
+	// Extract messages with proper tool_use and tool_result translation
+	translatedMsgs := translateAnthropicMessagesToOpenAI(req.Messages)
+	chatReq.Messages = append(chatReq.Messages, translatedMsgs...)
 
 	// Guardrail messages to prevent context overflow 400 errors
 	chatReq.Messages = SanitizeAndGuardrailMessages(chatReq.Messages, 0)
@@ -545,4 +541,141 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	if flusher != nil {
 		flusher.Flush()
 	}
+}
+
+// translateAnthropicToolsToOpenAI converts Anthropic tool specs (input_schema) into OpenAI function specs
+func translateAnthropicToolsToOpenAI(tools []interface{}) []interface{} {
+	if len(tools) == 0 {
+		return nil
+	}
+	res := make([]interface{}, 0, len(tools))
+	for _, t := range tools {
+		m, ok := t.(map[string]interface{})
+		if !ok {
+			res = append(res, t)
+			continue
+		}
+		if m["type"] == "function" && m["function"] != nil {
+			res = append(res, t)
+			continue
+		}
+		name, _ := m["name"].(string)
+		desc, _ := m["description"].(string)
+		schema := m["input_schema"]
+		if schema == nil {
+			schema = m["parameters"]
+		}
+		if schema == nil {
+			schema = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
+		}
+		res = append(res, map[string]interface{}{
+			"type": "function",
+			"function": map[string]interface{}{
+				"name":        name,
+				"description": desc,
+				"parameters":  schema,
+			},
+		})
+	}
+	return res
+}
+
+// translateAnthropicMessagesToOpenAI parses tool_use and tool_result blocks into standard OpenAI ChatMessages
+func translateAnthropicMessagesToOpenAI(messages []AnthropicMessage) []providers.ChatMessage {
+	var result []providers.ChatMessage
+
+	for _, m := range messages {
+		blocks, ok := m.Content.([]interface{})
+		if !ok {
+			result = append(result, providers.ChatMessage{
+				Role:    m.Role,
+				Content: m.Content,
+			})
+			continue
+		}
+
+		var textParts []string
+		var toolCalls []interface{}
+		var toolResults []providers.ChatMessage
+		var hasMultimodal bool
+
+		for _, b := range blocks {
+			bMap, ok := b.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			bType, _ := bMap["type"].(string)
+			switch bType {
+			case "text":
+				if txt, ok := bMap["text"].(string); ok {
+					textParts = append(textParts, txt)
+				}
+			case "tool_use":
+				id, _ := bMap["id"].(string)
+				name, _ := bMap["name"].(string)
+				input := bMap["input"]
+				argsStr := "{}"
+				if input != nil {
+					if argBytes, err := json.Marshal(input); err == nil {
+						argsStr = string(argBytes)
+					}
+				}
+				toolCalls = append(toolCalls, map[string]interface{}{
+					"id":   id,
+					"type": "function",
+					"function": map[string]interface{}{
+						"name":      name,
+						"arguments": argsStr,
+					},
+				})
+			case "tool_result":
+				id, _ := bMap["tool_use_id"].(string)
+				var contentStr string
+				switch cv := bMap["content"].(type) {
+				case string:
+					contentStr = cv
+				default:
+					cBytes, _ := json.Marshal(cv)
+					contentStr = string(cBytes)
+				}
+				toolResults = append(toolResults, providers.ChatMessage{
+					Role:       "tool",
+					ToolCallID: id,
+					Content:    contentStr,
+				})
+			case "image":
+				hasMultimodal = true
+			}
+		}
+
+		if hasMultimodal {
+			result = append(result, providers.ChatMessage{
+				Role:    m.Role,
+				Content: m.Content,
+			})
+			continue
+		}
+
+		if len(toolResults) > 0 {
+			if len(textParts) > 0 {
+				result = append(result, providers.ChatMessage{
+					Role:    m.Role,
+					Content: strings.Join(textParts, "\n"),
+				})
+			}
+			result = append(result, toolResults...)
+			continue
+		}
+
+		msg := providers.ChatMessage{
+			Role:    m.Role,
+			Content: strings.Join(textParts, "\n"),
+		}
+		if len(toolCalls) > 0 {
+			msg.ToolCalls = toolCalls
+		}
+		result = append(result, msg)
+	}
+
+	return result
 }

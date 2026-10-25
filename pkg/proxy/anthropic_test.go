@@ -99,3 +99,109 @@ func TestAnthropicMessagesHandler(t *testing.T) {
 		t.Errorf("expected content_block_delta SSE event, got: %s", respStr)
 	}
 }
+
+func TestAnthropicToolTranslation(t *testing.T) {
+	// Test Tool Spec conversion
+	anthropicTools := []interface{}{
+		map[string]interface{}{
+			"name":        "search_code",
+			"description": "Searches codebase",
+			"input_schema": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"query"},
+			},
+		},
+	}
+
+	openAITools := translateAnthropicToolsToOpenAI(anthropicTools)
+	if len(openAITools) != 1 {
+		t.Fatalf("expected 1 translated tool, got %d", len(openAITools))
+	}
+	tMap, ok := openAITools[0].(map[string]interface{})
+	if !ok || tMap["type"] != "function" {
+		t.Fatalf("expected tool type 'function', got: %v", openAITools[0])
+	}
+	fnMap, ok := tMap["function"].(map[string]interface{})
+	if !ok || fnMap["name"] != "search_code" || fnMap["parameters"] == nil {
+		t.Fatalf("invalid translated function spec: %v", fnMap)
+	}
+
+	// Test Messages conversion (tool_use and tool_result blocks)
+	messages := []AnthropicMessage{
+		{
+			Role: "assistant",
+			Content: []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": "Checking files",
+				},
+				map[string]interface{}{
+					"type": "tool_use",
+					"id":   "toolu_01",
+					"name": "search_code",
+					"input": map[string]interface{}{
+						"query": "router",
+					},
+				},
+			},
+		},
+		{
+			Role: "user",
+			Content: []interface{}{
+				map[string]interface{}{
+					"type":         "tool_result",
+					"tool_use_id": "toolu_01",
+					"content":      "router.go found",
+				},
+			},
+		},
+	}
+
+	converted := translateAnthropicMessagesToOpenAI(messages)
+	if len(converted) != 2 {
+		t.Fatalf("expected 2 converted messages, got %d", len(converted))
+	}
+	// Assistant message has tool_calls
+	if converted[0].Role != "assistant" || len(converted[0].ToolCalls) != 1 {
+		t.Fatalf("expected assistant message with 1 tool call, got: %+v", converted[0])
+	}
+	// User message converted to role: tool
+	if converted[1].Role != "tool" || converted[1].ToolCallID != "toolu_01" || converted[1].Content != "router.go found" {
+		t.Fatalf("expected tool result message, got: %+v", converted[1])
+	}
+}
+
+func TestSynthesizedSSE(t *testing.T) {
+	jsonBody := []byte(`{
+		"id": "chatcmpl-test-syn",
+		"created": 1729000000,
+		"model": "gpt-4o",
+		"choices": [
+			{
+				"index": 0,
+				"message": {
+					"role": "assistant",
+					"content": "This was non-streaming"
+				},
+				"finish_reason": "stop"
+			}
+		]
+	}`)
+
+	var buf bytes.Buffer
+	writeSynthesizedSSE(&buf, nil, jsonBody, "gpt-4o")
+
+	output := buf.String()
+	if !strings.Contains(output, "chat.completion.chunk") {
+		t.Errorf("expected chunk in SSE output, got: %s", output)
+	}
+	if !strings.Contains(output, "This was non-streaming") {
+		t.Errorf("expected synthesized content in SSE output, got: %s", output)
+	}
+	if !strings.Contains(output, "data: [DONE]") {
+		t.Errorf("expected [DONE] delimiter in SSE output, got: %s", output)
+	}
+}

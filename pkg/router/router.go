@@ -521,6 +521,78 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 	return nil, false, http.StatusServiceUnavailable, fmt.Errorf("no available targets for combo %s", combo.Name)
 }
 
+// rankProvidersForModel returns healthy providers sorted deterministically by model affinity
+func (r *Router) rankProvidersForModel(model string) []providers.Provider {
+	lower := strings.ToLower(model)
+	var list []providers.Provider
+	for _, p := range r.providers {
+		if p.IsHealthy() {
+			list = append(list, p)
+		}
+	}
+
+	scoreProvider := func(p providers.Provider) int {
+		pType := strings.ToLower(p.Type())
+		pID := strings.ToLower(p.ID())
+
+		// Claude / Anthropic affinity
+		if strings.Contains(lower, "claude") || strings.Contains(lower, "anthropic") || strings.Contains(lower, "haiku") || strings.Contains(lower, "sonnet") || strings.Contains(lower, "opus") {
+			if pType == "anthropic" || pID == "anthropic" {
+				return 100
+			}
+			if pType == "kiro" || pID == "kiro" {
+				return 90
+			}
+			if pType == "antigravity" || pID == "antigravity" {
+				return 85
+			}
+		}
+
+		// Gemini affinity
+		if strings.Contains(lower, "gemini") {
+			if pType == "antigravity" || pID == "antigravity" {
+				return 100
+			}
+			if pType == "google" || pID == "gemini" {
+				return 90
+			}
+		}
+
+		// OpenAI / GPT / Codex affinity
+		if strings.Contains(lower, "gpt") || strings.Contains(lower, "o1") || strings.Contains(lower, "o3") || strings.Contains(lower, "codex") {
+			if pType == "codex" || pID == "codex" {
+				return 100
+			}
+			if pType == "openai" {
+				return 90
+			}
+		}
+
+		// DeepSeek affinity
+		if strings.Contains(lower, "deepseek") {
+			if strings.Contains(pID, "deepseek") {
+				return 100
+			}
+			if pType == "kiro" || pID == "kiro" {
+				return 80
+			}
+		}
+
+		return 10
+	}
+
+	sort.SliceStable(list, func(i, j int) bool {
+		scoreI := scoreProvider(list[i])
+		scoreJ := scoreProvider(list[j])
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+		return list[i].ID() < list[j].ID()
+	})
+
+	return list
+}
+
 func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -543,25 +615,28 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 		}
 	}
 
-	// Otherwise, send to first available provider with failover across healthy providers
+	// Deterministic model-affinity failover across healthy, non-cooling providers
 	var lastErr error
 	var lastStatus int
-	for _, p := range r.providers {
-		if p.IsHealthy() {
-			targetReq := *req
-			translator.SanitizeChatRequest(p.ID(), p.Type(), &targetReq)
-			start := time.Now()
-			body, isStream, statusCode, err := p.ChatCompletion(ctx, &targetReq)
-			if err == nil && statusCode >= 200 && statusCode < 400 {
-				r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
-				return body, isStream, statusCode, nil
-			}
-			log.Printf("[GoRoute] executeDirect: provider %s failed with status %d (err: %v), trying next provider...", p.ID(), statusCode, err)
-			lastErr = err
-			lastStatus = statusCode
-			if body != nil {
-				body.Close()
-			}
+	candidates := r.rankProvidersForModel(req.Model)
+	for _, p := range candidates {
+		if resilience.GlobalCooldown.IsCooling(p.ID(), req.Model) {
+			continue
+		}
+		targetReq := *req
+		translator.SanitizeChatRequest(p.ID(), p.Type(), &targetReq)
+		start := time.Now()
+		body, isStream, statusCode, err := p.ChatCompletion(ctx, &targetReq)
+		if err == nil && statusCode >= 200 && statusCode < 400 {
+			r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
+			return body, isStream, statusCode, nil
+		}
+		log.Printf("[GoRoute] executeDirect: provider %s failed with status %d (err: %v), cooling down and trying next...", p.ID(), statusCode, err)
+		resilience.GlobalCooldown.MarkCooldown(p.ID(), req.Model, statusCode, "executeDirect failover", 1*time.Minute)
+		lastErr = err
+		lastStatus = statusCode
+		if body != nil {
+			body.Close()
 		}
 	}
 

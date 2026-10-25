@@ -1733,6 +1733,19 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		DurationMs: time.Since(start).Milliseconds(),
 	})
 
+	// If client requested stream: true but upstream returned non-streaming JSON:
+	// Synthesize standard OpenAI SSE chunk stream so client parser doesn't crash
+	if chatReq.Stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(statusCode)
+
+		flusher, _ := w.(http.Flusher)
+		writeSynthesizedSSE(w, flusher, respBytes, chatReq.Model)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cache", "MISS")
 	w.WriteHeader(statusCode)
@@ -4603,6 +4616,123 @@ func consolidateSSEStream(body io.Reader, model string) ([]byte, error) {
 		},
 	}
 	return json.Marshal(res)
+}
+
+func writeSynthesizedSSE(w io.Writer, flusher http.Flusher, respBytes []byte, model string) {
+	var resp struct {
+		ID      string `json:"id"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role      string        `json:"role"`
+				Content   string        `json:"content"`
+				ToolCalls []interface{} `json:"tool_calls,omitempty"`
+			} `json:"message"`
+			FinishReason *string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+
+	id := fmt.Sprintf("chatcmpl-syn-%d", time.Now().UnixNano())
+	created := time.Now().Unix()
+	content := ""
+	finishReason := "stop"
+	var toolCalls []interface{}
+
+	if err := json.Unmarshal(respBytes, &resp); err == nil {
+		if resp.ID != "" {
+			id = resp.ID
+		}
+		if resp.Created > 0 {
+			created = resp.Created
+		}
+		if resp.Model != "" {
+			model = resp.Model
+		}
+		if len(resp.Choices) > 0 {
+			c := resp.Choices[0]
+			content = c.Message.Content
+			toolCalls = c.Message.ToolCalls
+			if c.FinishReason != nil && *c.FinishReason != "" {
+				finishReason = *c.FinishReason
+			}
+		}
+	} else {
+		content = string(respBytes)
+	}
+
+	// 1. Initial role chunk
+	roleChunk := map[string]interface{}{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]interface{}{
+			{
+				"index": 0,
+				"delta": map[string]interface{}{
+					"role": "assistant",
+				},
+				"finish_reason": nil,
+			},
+		},
+	}
+	roleData, _ := json.Marshal(roleChunk)
+	fmt.Fprintf(w, "data: %s\n\n", roleData)
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	// 2. Content / Tool call chunk
+	if content != "" || len(toolCalls) > 0 {
+		delta := map[string]interface{}{}
+		if content != "" {
+			delta["content"] = content
+		}
+		if len(toolCalls) > 0 {
+			delta["tool_calls"] = toolCalls
+		}
+		contentChunk := map[string]interface{}{
+			"id":      id,
+			"object":  "chat.completion.chunk",
+			"created": created,
+			"model":   model,
+			"choices": []map[string]interface{}{
+				{
+					"index":         0,
+					"delta":         delta,
+					"finish_reason": nil,
+				},
+			},
+		}
+		contentData, _ := json.Marshal(contentChunk)
+		fmt.Fprintf(w, "data: %s\n\n", contentData)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	// 3. Final chunk with finish reason
+	finalChunk := map[string]interface{}{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]interface{}{
+			{
+				"index":         0,
+				"delta":         map[string]interface{}{},
+				"finish_reason": finishReason,
+			},
+		},
+	}
+	finalData, _ := json.Marshal(finalChunk)
+	fmt.Fprintf(w, "data: %s\n\n", finalData)
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 func (s *Server) handleListCliAgents(w http.ResponseWriter, r *http.Request) {
