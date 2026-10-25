@@ -421,204 +421,42 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		modelID = "qwen3-coder-next"
 	}
 
-	// Prepare messages
+	// Prepare normalized messages ensuring Bedrock toolUse/toolResult bijection
 	var userContent string
 	var currentToolResults []kiroToolResult
 	var history []kiroHistoryTurn
 
-	lastAssistantToolUseIDs := make(map[string]bool)
-	lastAssistantToolUseCount := 0
+	normalized := buildNormalizedTurns(req.Messages)
 
-	for i, m := range req.Messages {
-		isLast := i == len(req.Messages)-1
-
-		if m.Role == "assistant" {
-			text := ""
-			var toolUses []kiroToolUse
-			assistantToolUseIDs := make(map[string]bool)
-
-			// 1. Parse OpenAI format m.ToolCalls
-			for _, tc := range m.ToolCalls {
-				if tcMap, ok := tc.(map[string]interface{}); ok {
-					id, _ := tcMap["id"].(string)
-					name := ""
-					var input interface{} = map[string]interface{}{}
-					if fn, ok := tcMap["function"].(map[string]interface{}); ok {
-						name, _ = fn["name"].(string)
-						if argsStr, ok := fn["arguments"].(string); ok {
-							var parsedArgs interface{}
-							if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err == nil {
-								input = parsedArgs
-							}
-						} else if fn["arguments"] != nil {
-							input = fn["arguments"]
-						}
-					}
-					if id != "" {
-						toolUses = append(toolUses, kiroToolUse{
-							ToolUseId: id,
-							Name:      name,
-							Input:     input,
-						})
-						assistantToolUseIDs[id] = true
-					}
-				}
-			}
-
-			// 2. Parse Anthropic format content blocks
-			switch v := m.Content.(type) {
-			case string:
-				text = v
-			case []interface{}:
-				for _, item := range v {
-					if bm, ok := item.(map[string]interface{}); ok {
-						if bm["type"] == "text" {
-							if tStr, ok := bm["text"].(string); ok {
-								text += tStr + "\n"
-							}
-						} else if bm["type"] == "tool_use" {
-							id, _ := bm["id"].(string)
-							name, _ := bm["name"].(string)
-							input := bm["input"]
-							if id != "" && !assistantToolUseIDs[id] {
-								toolUses = append(toolUses, kiroToolUse{
-									ToolUseId: id,
-									Name:      name,
-									Input:     input,
-								})
-								assistantToolUseIDs[id] = true
-							}
-						}
-					}
-				}
-			}
-
-			lastAssistantToolUseIDs = assistantToolUseIDs
-			lastAssistantToolUseCount = len(toolUses)
-
+	for i := 0; i < len(normalized)-1; i++ {
+		t := normalized[i]
+		if t.Role == "assistant" {
 			history = append(history, kiroHistoryTurn{
 				AssistantResponseMessage: &kiroAssistMsg{
-					Content:  strings.TrimSpace(text),
-					ToolUses: toolUses,
+					Content:  strings.TrimSpace(t.Text),
+					ToolUses: t.ToolUses,
 				},
 			})
 		} else {
-			// user, system, or tool
-			text := ""
-			var rawToolResults []kiroToolResult
-
-			// 1. Direct tool role message (OpenAI format)
-			if m.Role == "tool" && m.ToolCallID != "" {
-				resContent := ""
-				switch c := m.Content.(type) {
-				case string:
-					resContent = c
-				default:
-					b, _ := json.Marshal(c)
-					resContent = string(b)
-				}
-				if resContent == "" {
-					resContent = "(no output)"
-				} else if len(resContent) > 200 {
-					filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
-					resContent = filtered.Output
-				}
-				rawToolResults = append(rawToolResults, kiroToolResult{
-					ToolUseId: m.ToolCallID,
-					Status:    "success",
-					Content:   []kiroToolResultText{{Text: resContent}},
-				})
+			var uCtx *kiroUserInputContext
+			if len(t.ToolResults) > 0 {
+				uCtx = &kiroUserInputContext{ToolResults: t.ToolResults}
 			}
-
-			// 2. Content blocks (Anthropic format or text)
-			switch v := m.Content.(type) {
-			case string:
-				if m.Role != "tool" {
-					text = v
-				}
-			case []interface{}:
-				for _, item := range v {
-					if bm, ok := item.(map[string]interface{}); ok {
-						if bm["type"] == "text" {
-							if tStr, ok := bm["text"].(string); ok {
-								text += tStr + "\n"
-							}
-						} else if bm["type"] == "tool_result" {
-							toolUseId, _ := bm["tool_use_id"].(string)
-							isErr, _ := bm["is_error"].(bool)
-							status := "success"
-							if isErr {
-								status = "error"
-							}
-							resContent := ""
-							switch c := bm["content"].(type) {
-							case string:
-								resContent = c
-							default:
-								b, _ := json.Marshal(c)
-								resContent = string(b)
-							}
-							if resContent == "" {
-								resContent = "(no output)"
-							} else if len(resContent) > 200 {
-								filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
-								resContent = filtered.Output
-							}
-							rawToolResults = append(rawToolResults, kiroToolResult{
-								ToolUseId: toolUseId,
-								Status:    status,
-								Content:   []kiroToolResultText{{Text: resContent}},
-							})
-						}
-					}
-				}
-			}
-
-			// 3. Strict Bedrock Invariant Guard:
-			// Prevents: "The number of toolResult blocks at messages.N.content exceeds the number of toolUse blocks of previous turn."
-			// Any toolResult whose ID does not match the previous assistant turn, or exceeds the count,
-			// is safely converted into plain text context inside Content.
-			var validToolResults []kiroToolResult
-			for _, tr := range rawToolResults {
-				trText := ""
-				if len(tr.Content) > 0 {
-					trText = tr.Content[0].Text
-				}
-
-				if lastAssistantToolUseIDs[tr.ToolUseId] && len(validToolResults) < lastAssistantToolUseCount {
-					validToolResults = append(validToolResults, tr)
-					delete(lastAssistantToolUseIDs, tr.ToolUseId)
-				} else {
-					if text != "" {
-						text += "\n"
-					}
-					text += fmt.Sprintf("[Tool Result %s]:\n%s", tr.ToolUseId, trText)
-				}
-			}
-
-			// Once consumed by a user turn, reset the counter
-			lastAssistantToolUseCount = 0
-			lastAssistantToolUseIDs = make(map[string]bool)
-
-			text = strings.TrimSpace(text)
-			if isLast {
-				userContent = text
-				currentToolResults = validToolResults
-			} else {
-				var uCtx *kiroUserInputContext
-				if len(validToolResults) > 0 {
-					uCtx = &kiroUserInputContext{ToolResults: validToolResults}
-				}
-				history = append(history, kiroHistoryTurn{
-					UserInputMessage: &kiroUserMsg{
-						Content:                 text,
-						ModelID:                 modelID,
-						Origin:                  "AI_EDITOR",
-						UserInputMessageContext: uCtx,
-					},
-				})
-			}
+			history = append(history, kiroHistoryTurn{
+				UserInputMessage: &kiroUserMsg{
+					Content:                 strings.TrimSpace(t.Text),
+					ModelID:                 modelID,
+					Origin:                  "AI_EDITOR",
+					UserInputMessageContext: uCtx,
+				},
+			})
 		}
+	}
+
+	if len(normalized) > 0 {
+		last := normalized[len(normalized)-1]
+		userContent = strings.TrimSpace(last.Text)
+		currentToolResults = last.ToolResults
 	}
 
 	if userContent == "" && len(currentToolResults) == 0 {
@@ -1032,4 +870,263 @@ func pruneKiroConversationState(state *kiroConversationState, maxBytes int) {
 			break
 		}
 	}
+}
+
+type normalizedTurn struct {
+	Role        string // "user" or "assistant"
+	Text        string
+	ToolUses    []kiroToolUse
+	ToolResults []kiroToolResult
+}
+
+// buildNormalizedTurns parses messages, coalesces consecutive turns of the same role,
+// and enforces a strict 1-to-1 bijection between Assistant.ToolUses and User.ToolResults.
+func buildNormalizedTurns(messages []providers.ChatMessage) []normalizedTurn {
+	var raw []normalizedTurn
+
+	for _, m := range messages {
+		if m.Role == "assistant" {
+			var textParts []string
+			var toolUses []kiroToolUse
+			seenIDs := make(map[string]bool)
+
+			// 1. Check m.ToolCalls (OpenAI format)
+			for _, tc := range m.ToolCalls {
+				if tcMap, ok := tc.(map[string]interface{}); ok {
+					id, _ := tcMap["id"].(string)
+					name := ""
+					var input interface{} = map[string]interface{}{}
+					if fn, ok := tcMap["function"].(map[string]interface{}); ok {
+						name, _ = fn["name"].(string)
+						if argsStr, ok := fn["arguments"].(string); ok {
+							var parsedArgs interface{}
+							if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err == nil {
+								input = parsedArgs
+							}
+						} else if fn["arguments"] != nil {
+							input = fn["arguments"]
+						}
+					}
+					if id != "" && !seenIDs[id] {
+						toolUses = append(toolUses, kiroToolUse{
+							ToolUseId: id,
+							Name:      name,
+							Input:     input,
+						})
+						seenIDs[id] = true
+					}
+				}
+			}
+
+			// 2. Check m.Content (Anthropic blocks or string)
+			switch v := m.Content.(type) {
+			case string:
+				if v != "" {
+					textParts = append(textParts, v)
+				}
+			case []interface{}:
+				for _, item := range v {
+					if bm, ok := item.(map[string]interface{}); ok {
+						if bm["type"] == "text" {
+							if tStr, ok := bm["text"].(string); ok && tStr != "" {
+								textParts = append(textParts, tStr)
+							}
+						} else if bm["type"] == "tool_use" {
+							id, _ := bm["id"].(string)
+							name, _ := bm["name"].(string)
+							input := bm["input"]
+							if id != "" && !seenIDs[id] {
+								toolUses = append(toolUses, kiroToolUse{
+									ToolUseId: id,
+									Name:      name,
+									Input:     input,
+								})
+								seenIDs[id] = true
+							}
+						}
+					}
+				}
+			}
+
+			raw = append(raw, normalizedTurn{
+				Role:     "assistant",
+				Text:     strings.Join(textParts, "\n"),
+				ToolUses: toolUses,
+			})
+		} else {
+			// user, system, or tool
+			var textParts []string
+			var toolResults []kiroToolResult
+
+			// 1. Check m.Role == "tool" (OpenAI format)
+			if m.Role == "tool" && m.ToolCallID != "" {
+				resContent := ""
+				switch c := m.Content.(type) {
+				case string:
+					resContent = c
+				default:
+					b, _ := json.Marshal(c)
+					resContent = string(b)
+				}
+				if resContent == "" {
+					resContent = "(no output)"
+				} else if len(resContent) > 200 {
+					filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
+					resContent = filtered.Output
+				}
+				toolResults = append(toolResults, kiroToolResult{
+					ToolUseId: m.ToolCallID,
+					Status:    "success",
+					Content:   []kiroToolResultText{{Text: resContent}},
+				})
+			}
+
+			// 2. Check m.Content (Anthropic blocks or string)
+			switch v := m.Content.(type) {
+			case string:
+				if m.Role != "tool" && v != "" {
+					textParts = append(textParts, v)
+				}
+			case []interface{}:
+				for _, item := range v {
+					if bm, ok := item.(map[string]interface{}); ok {
+						if bm["type"] == "text" {
+							if tStr, ok := bm["text"].(string); ok && tStr != "" {
+								textParts = append(textParts, tStr)
+							}
+						} else if bm["type"] == "tool_result" {
+							toolUseId, _ := bm["tool_use_id"].(string)
+							isErr, _ := bm["is_error"].(bool)
+							status := "success"
+							if isErr {
+								status = "error"
+							}
+							resContent := ""
+							switch c := bm["content"].(type) {
+							case string:
+								resContent = c
+							default:
+								b, _ := json.Marshal(c)
+								resContent = string(b)
+							}
+							if resContent == "" {
+								resContent = "(no output)"
+							} else if len(resContent) > 200 {
+								filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
+								resContent = filtered.Output
+							}
+							toolResults = append(toolResults, kiroToolResult{
+								ToolUseId: toolUseId,
+								Status:    status,
+								Content:   []kiroToolResultText{{Text: resContent}},
+							})
+						}
+					}
+				}
+			}
+
+			raw = append(raw, normalizedTurn{
+				Role:        "user",
+				Text:        strings.Join(textParts, "\n"),
+				ToolResults: toolResults,
+			})
+		}
+	}
+
+	// 1. Coalesce consecutive turns of the same role
+	var coalesced []normalizedTurn
+	for _, t := range raw {
+		if len(coalesced) > 0 && coalesced[len(coalesced)-1].Role == t.Role {
+			last := &coalesced[len(coalesced)-1]
+			if t.Text != "" {
+				if last.Text != "" {
+					last.Text += "\n" + t.Text
+				} else {
+					last.Text = t.Text
+				}
+			}
+			last.ToolUses = append(last.ToolUses, t.ToolUses...)
+			last.ToolResults = append(last.ToolResults, t.ToolResults...)
+		} else {
+			coalesced = append(coalesced, t)
+		}
+	}
+
+	// Ensure conversation starts with a User turn for Bedrock
+	if len(coalesced) > 0 && coalesced[0].Role == "assistant" {
+		coalesced = append([]normalizedTurn{{Role: "user", Text: "Hello"}}, coalesced...)
+	}
+
+	// 2. Strictly enforce Bedrock bijection between Assistant[i] and User[i+1]:
+	// - Every toolUse in Assistant must be answered by a toolResult in User
+	// - Every toolResult in User must answer a toolUse in Assistant
+	for i := 0; i < len(coalesced)-1; i++ {
+		if coalesced[i].Role == "assistant" && coalesced[i+1].Role == "user" {
+			assist := &coalesced[i]
+			user := &coalesced[i+1]
+
+			if len(assist.ToolUses) > 0 || len(user.ToolResults) > 0 {
+				userResultMap := make(map[string]kiroToolResult)
+				for _, tr := range user.ToolResults {
+					userResultMap[tr.ToolUseId] = tr
+				}
+
+				assistUseMap := make(map[string]kiroToolUse)
+				for _, tu := range assist.ToolUses {
+					assistUseMap[tu.ToolUseId] = tu
+				}
+
+				var validUses []kiroToolUse
+				var validResults []kiroToolResult
+
+				// For each toolUse, keep only if answered by user turn
+				for _, tu := range assist.ToolUses {
+					if tr, ok := userResultMap[tu.ToolUseId]; ok {
+						validUses = append(validUses, tu)
+						validResults = append(validResults, tr)
+						delete(userResultMap, tu.ToolUseId)
+					} else {
+						// Unanswered toolUse: demote to text in assistant turn so Bedrock doesn't expect toolResult
+						if assist.Text != "" {
+							assist.Text += "\n"
+						}
+						assist.Text += fmt.Sprintf("[Called tool: %s]", tu.Name)
+					}
+				}
+
+				// For any remaining user toolResults not called by assistant: demote to user text
+				for _, tr := range user.ToolResults {
+					if _, matched := assistUseMap[tr.ToolUseId]; !matched {
+						resText := ""
+						if len(tr.Content) > 0 {
+							resText = tr.Content[0].Text
+						}
+						if user.Text != "" {
+							user.Text += "\n"
+						}
+						user.Text += fmt.Sprintf("[Tool Result %s]:\n%s", tr.ToolUseId, resText)
+					}
+				}
+
+				assist.ToolUses = validUses
+				user.ToolResults = validResults
+			}
+		}
+	}
+
+	// 3. If last turn is assistant (Bedrock requires last turn to be user):
+	// Demote any trailing toolUses to text and append a user turn
+	if len(coalesced) > 0 && coalesced[len(coalesced)-1].Role == "assistant" {
+		last := &coalesced[len(coalesced)-1]
+		for _, tu := range last.ToolUses {
+			if last.Text != "" {
+				last.Text += "\n"
+			}
+			last.Text += fmt.Sprintf("[Called tool: %s]", tu.Name)
+		}
+		last.ToolUses = nil
+		coalesced = append(coalesced, normalizedTurn{Role: "user", Text: "Continue"})
+	}
+
+	return coalesced
 }

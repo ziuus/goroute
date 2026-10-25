@@ -191,11 +191,29 @@ func extractInlineDataFromURL(rawURL string) *geminiInlineData {
 	return nil
 }
 
+func isGeminiPartValid(p geminiPart) bool {
+	if strings.TrimSpace(p.Text) != "" {
+		return true
+	}
+	if p.InlineData != nil && p.InlineData.Data != "" {
+		return true
+	}
+	if p.FunctionCall != nil && p.FunctionCall.Name != "" {
+		return true
+	}
+	if p.FunctionResponse != nil && p.FunctionResponse.Name != "" {
+		return true
+	}
+	return false
+}
+
 func parseGeminiParts(content interface{}, toolUseNames map[string]string) []geminiPart {
 	var parts []geminiPart
 	switch v := content.(type) {
 	case string:
-		parts = append(parts, geminiPart{Text: v})
+		if strings.TrimSpace(v) != "" {
+			parts = append(parts, geminiPart{Text: v})
+		}
 	case []interface{}:
 		for _, item := range v {
 			if m, ok := item.(map[string]interface{}); ok {
@@ -205,8 +223,10 @@ func parseGeminiParts(content interface{}, toolUseNames map[string]string) []gem
 				}
 
 				// 1. Text block
-				if txt, ok := m["text"].(string); ok && txt != "" {
-					parts = append(parts, geminiPart{Text: txt})
+				if m["type"] == "text" {
+					if txt, ok := m["text"].(string); ok && strings.TrimSpace(txt) != "" {
+						parts = append(parts, geminiPart{Text: txt})
+					}
 					continue
 				}
 
@@ -311,13 +331,24 @@ func parseGeminiParts(content interface{}, toolUseNames map[string]string) []gem
 				}
 			}
 			b, _ := json.Marshal(item)
-			parts = append(parts, geminiPart{Text: string(b)})
+			if str := strings.TrimSpace(string(b)); str != "" && str != "null" && str != "{}" {
+				parts = append(parts, geminiPart{Text: str})
+			}
 		}
 	default:
 		b, _ := json.Marshal(v)
-		parts = append(parts, geminiPart{Text: string(b)})
+		if str := strings.TrimSpace(string(b)); str != "" && str != "null" && str != "{}" {
+			parts = append(parts, geminiPart{Text: str})
+		}
 	}
-	return parts
+
+	var validParts []geminiPart
+	for _, p := range parts {
+		if isGeminiPartValid(p) {
+			validParts = append(validParts, p)
+		}
+	}
+	return validParts
 }
 
 type geminiContent struct {
@@ -627,16 +658,23 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				}
 			}
 
-			if len(parts) == 0 {
+			var validParts []geminiPart
+			for _, p := range parts {
+				if isGeminiPartValid(p) {
+					validParts = append(validParts, p)
+				}
+			}
+
+			if len(validParts) == 0 {
 				continue
 			}
 
 			if len(contents) > 0 && contents[len(contents)-1].Role == role {
-				contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, parts...)
+				contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, validParts...)
 			} else {
 				contents = append(contents, geminiContent{
 					Role:  role,
-					Parts: parts,
+					Parts: validParts,
 				})
 			}
 		}
