@@ -22,6 +22,9 @@ func SanitizeChatRequest(providerID, providerType string, req *providers.ChatReq
 		return
 	}
 
+	// Translate reasoning_effort and thinking parameters (OmniRoute parity: providers/xai/thinking.ts)
+	TranslateThinking(providerID, providerType, req)
+
 	modelLower := strings.ToLower(req.Model)
 
 	// 1. Temperature & Sampling rules

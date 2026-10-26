@@ -14,13 +14,22 @@ type ChatMessage struct {
 }
 
 type ChatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []ChatMessage `json:"messages"`
-	Stream      bool          `json:"stream,omitempty"`
-	Temperature *float64      `json:"temperature,omitempty"`
-	MaxTokens   *int          `json:"max_tokens,omitempty"`
-	Tools       []interface{} `json:"tools,omitempty"`
-	ToolChoice  interface{}   `json:"tool_choice,omitempty"`
+	Model            string        `json:"model"`
+	Messages         []ChatMessage `json:"messages"`
+	Stream           bool          `json:"stream,omitempty"`
+	Temperature      *float64      `json:"temperature,omitempty"`
+	TopP             *float64      `json:"top_p,omitempty"`
+	MaxTokens        *int          `json:"max_tokens,omitempty"`
+	Tools            []interface{} `json:"tools,omitempty"`
+	ToolChoice       interface{}   `json:"tool_choice,omitempty"`
+	ReasoningEffort  string        `json:"reasoning_effort,omitempty"`
+	Thinking         interface{}   `json:"thinking,omitempty"`
+	ResponseFormat   interface{}   `json:"response_format,omitempty"`
+	Stop             interface{}   `json:"stop,omitempty"`
+	Seed             *int          `json:"seed,omitempty"`
+	PresencePenalty  *float64      `json:"presence_penalty,omitempty"`
+	FrequencyPenalty *float64      `json:"frequency_penalty,omitempty"`
+	User             string        `json:"user,omitempty"`
 }
 
 type ModelInfo struct {
