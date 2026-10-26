@@ -54,7 +54,10 @@ import {
   CheckCheck,
   Save,
   FileText,
-  History
+  History,
+  Edit3,
+  Mail,
+  KeyRound
 } from 'lucide-react';
 
 interface Account {
@@ -179,6 +182,20 @@ export default function GoRouteDashboard() {
   const [showAliasModal, setShowAliasModal] = useState(false);
   const [newAliasKey, setNewAliasKey] = useState('');
   const [newAliasTarget, setNewAliasTarget] = useState('');
+
+  // Providers Tab Filters & Sorting
+  const [providerFilter, setProviderFilter] = useState<'all' | 'active' | 'has_accounts'>('all');
+  const [providerSortBy, setProviderSortBy] = useState<'accounts' | 'name'>('accounts');
+
+  // Account Details & Edit Modal State
+  const [editingAccount, setEditingAccount] = useState<{ providerId: string; account: any } | null>(null);
+  const [editAccountPool, setEditAccountPool] = useState<string>('pool1');
+  const [editAccountWeight, setEditAccountWeight] = useState<number>(1.0);
+  const [editAccountEmail, setEditAccountEmail] = useState<string>('');
+  const [editAccountProjectId, setEditAccountProjectId] = useState<string>('');
+  const [editAccountApiKey, setEditAccountApiKey] = useState<string>('');
+  const [editAccountRefreshToken, setEditAccountRefreshToken] = useState<string>('');
+  const [editAccountSaving, setEditAccountSaving] = useState<boolean>(false);
 
   // Agent Fleet Tab Filters & Sorting
   const [fleetStatusFilter, setFleetStatusFilter] = useState<'all' | 'connected' | 'detected' | 'not_installed'>('all');
@@ -350,6 +367,47 @@ export default function GoRouteDashboard() {
       showToast(err.message || 'Error restoring backup');
     } finally {
       setInspectRestoring(false);
+    }
+  };
+
+  const openEditAccountModal = (providerId: string, acc: any) => {
+    setEditingAccount({ providerId, account: acc });
+    setEditAccountPool(acc.pool || 'pool1');
+    setEditAccountWeight(acc.weight || 1.0);
+    setEditAccountEmail(acc.email || '');
+    setEditAccountProjectId(acc.project_id || '');
+    setEditAccountApiKey(acc.api_key || '');
+    setEditAccountRefreshToken(acc.refresh_token || '');
+  };
+
+  const handleSaveAccount = async () => {
+    if (!editingAccount) return;
+    setEditAccountSaving(true);
+    try {
+      const res = await fetch(`/api/providers/${editingAccount.providerId}/accounts/${editingAccount.account.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pool: editAccountPool,
+          weight: Number(editAccountWeight) || 1.0,
+          email: editAccountEmail,
+          project_id: editAccountProjectId,
+          api_key: editAccountApiKey,
+          refresh_token: editAccountRefreshToken,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast(`Saved account ${editingAccount.account.id}`);
+        setEditingAccount(null);
+        fetchAllData();
+      } else {
+        showToast(data.error || 'Failed to update account');
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Error updating account');
+    } finally {
+      setEditAccountSaving(false);
     }
   };
 
@@ -687,26 +745,51 @@ wire_api = "responses"`;
 
   const cleanQuery = searchQuery.trim().toLowerCase();
 
-  // Universal Filtered Providers (searches id, name, type, base_url, accounts, models)
+  // Universal Filtered Providers (searches id, name, type, base_url, accounts, models) with Tab Filters & Sorting
   const filteredProviders = useMemo(() => {
-    if (!cleanQuery) return providers;
-    return providers.filter(p => {
-      const idMatch = p.id?.toLowerCase().includes(cleanQuery);
-      const nameMatch = p.label?.toLowerCase().includes(cleanQuery) || (p as any).name?.toLowerCase().includes(cleanQuery);
-      const typeMatch = p.type?.toLowerCase().includes(cleanQuery) || p.details?.type?.toLowerCase().includes(cleanQuery);
-      const urlMatch = p.details?.base_url?.toLowerCase().includes(cleanQuery);
-      const accounts = p.details?.accounts || [];
-      const accMatch = accounts.some((a: any) =>
-        a.email?.toLowerCase().includes(cleanQuery) ||
-        a.username?.toLowerCase().includes(cleanQuery) ||
-        a.id?.toLowerCase().includes(cleanQuery)
-      );
-      const modelMatch = catalog.some((m: any) =>
-        (m.provider === p.id || m.provider?.includes(p.id)) && (m.model?.toLowerCase().includes(cleanQuery) || m.id?.toLowerCase().includes(cleanQuery))
-      );
-      return idMatch || nameMatch || typeMatch || urlMatch || accMatch || modelMatch;
+    let list = [...providers];
+
+    // Filter by status or accounts
+    if (providerFilter === 'active') {
+      list = list.filter(p => p.status === 'active' || p.status === 'ok' || p.status === 'connected');
+    } else if (providerFilter === 'has_accounts') {
+      list = list.filter(p => (p.details?.accounts?.length || p.details?.accounts_count || 0) > 0);
+    }
+
+    if (cleanQuery) {
+      list = list.filter(p => {
+        const idMatch = p.id?.toLowerCase().includes(cleanQuery);
+        const nameMatch = p.label?.toLowerCase().includes(cleanQuery) || (p as any).name?.toLowerCase().includes(cleanQuery);
+        const typeMatch = p.type?.toLowerCase().includes(cleanQuery) || p.details?.type?.toLowerCase().includes(cleanQuery);
+        const urlMatch = p.details?.base_url?.toLowerCase().includes(cleanQuery);
+        const accounts = p.details?.accounts || [];
+        const accMatch = accounts.some((a: any) =>
+          a.email?.toLowerCase().includes(cleanQuery) ||
+          a.username?.toLowerCase().includes(cleanQuery) ||
+          a.id?.toLowerCase().includes(cleanQuery)
+        );
+        const modelMatch = catalog.some((m: any) =>
+          (m.provider === p.id || m.provider?.includes(p.id)) && (m.model?.toLowerCase().includes(cleanQuery) || m.id?.toLowerCase().includes(cleanQuery))
+        );
+        return idMatch || nameMatch || typeMatch || urlMatch || accMatch || modelMatch;
+      });
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      if (providerSortBy === 'accounts') {
+        const aCount = a.details?.accounts?.length ?? a.details?.accounts_count ?? 0;
+        const bCount = b.details?.accounts?.length ?? b.details?.accounts_count ?? 0;
+        if (aCount !== bCount) return bCount - aCount;
+        return (a.id || '').localeCompare(b.id || '');
+      } else if (providerSortBy === 'name') {
+        return (a.id || '').localeCompare(b.id || '');
+      }
+      return 0;
     });
-  }, [providers, cleanQuery, catalog]);
+
+    return list;
+  }, [providers, cleanQuery, catalog, providerFilter, providerSortBy]);
 
   // Universal Filtered Combos
   const filteredCombos = useMemo(() => {
@@ -1766,17 +1849,71 @@ wire_api = "responses"`;
               </div>
             </div>
 
+            {/* Providers Filter & Sorting Toolbar */}
+            <div className="liquid-card p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setProviderFilter('all')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    providerFilter === 'all'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  All ({providers.length})
+                </button>
+                <button
+                  onClick={() => setProviderFilter('active')}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    providerFilter === 'active'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span>Active ({providers.filter(p => p.status === 'active' || p.status === 'ok').length})</span>
+                </button>
+                <button
+                  onClick={() => setProviderFilter('has_accounts')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    providerFilter === 'has_accounts'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'text-sky-600 dark:text-sky-400 hover:bg-sky-500/10'
+                  }`}
+                >
+                  With Accounts ({providers.filter(p => (p.details?.accounts?.length || p.details?.accounts_count || 0) > 0).length})
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                  <select
+                    value={providerSortBy}
+                    onChange={(e) => setProviderSortBy(e.target.value as any)}
+                    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                  >
+                    <option value="accounts">Sort: Most Accounts First</option>
+                    <option value="name">Sort: Name (A-Z)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-4">
               {filteredProviders.length === 0 && (
                 <div className="liquid-card p-12 text-center">
                   <Search className="mx-auto h-8 w-8 text-slate-400" />
-                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No providers match &ldquo;{searchQuery}&rdquo;</h3>
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No providers match filters</h3>
                   <p className="mt-1 text-xs text-slate-500">Search by provider ID, display name, account email, or served model name.</p>
                   <button
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => {
+                      setProviderFilter('all');
+                      setSearchQuery('');
+                    }}
                     className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
                   >
-                    Clear search filter
+                    Reset Filters
                   </button>
                 </div>
               )}
@@ -1856,7 +1993,7 @@ wire_api = "responses"`;
                             {accounts.map((acc, idx) => (
                               <div
                                 key={acc.id}
-                                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-xs transition ${
+                                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3.5 text-xs transition ${
                                   acc.disabled
                                     ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40'
                                     : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/80 shadow-2xs'
@@ -1867,14 +2004,37 @@ wire_api = "responses"`;
                                     {idx + 1}
                                   </span>
                                   <div>
-                                    <div className="font-bold text-slate-900 dark:text-white">{acc.id}</div>
-                                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                                      Pool: {acc.pool || 'pool1'} {acc.project_id ? `• Project: ${acc.project_id}` : ''}
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-900 dark:text-white">{acc.id}</span>
+                                      {acc.has_token && (
+                                        <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                          ✓ Token Active
+                                        </span>
+                                      )}
+                                      {acc.email && (
+                                        <span className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                                          <Mail className="h-3 w-3 text-slate-400" />
+                                          <span>{acc.email}</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                                      <span className="rounded bg-slate-100 dark:bg-slate-700/40 px-1.5 py-0.5">Pool: {acc.pool || 'pool1'}</span>
+                                      <span>Weight: {acc.weight || 1.0}</span>
+                                      {acc.project_id && <span>Project: {acc.project_id}</span>}
                                     </div>
                                   </div>
                                 </div>
 
                                 <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => openEditAccountModal(p.id, acc)}
+                                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:text-rose-600 transition"
+                                    title="Edit account details, pool, weight, or credentials"
+                                  >
+                                    <Edit3 className="h-3 w-3 text-slate-400" />
+                                    <span>Edit</span>
+                                  </button>
                                   <button
                                     onClick={() => handleTestPing(p.id, acc.id)}
                                     className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -1893,7 +2053,7 @@ wire_api = "responses"`;
                                   </button>
                                   <button
                                     onClick={() => handleDeleteAccount(p.id, acc.id)}
-                                    className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600"
+                                    className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600 transition"
                                     title="Delete Account"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
@@ -3684,6 +3844,139 @@ wire_api = "responses"`;
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account Details & Edit Modal */}
+      {editingAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                  <Edit3 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Edit Account & Credentials
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    {editingAccount.providerId} / {editingAccount.account.id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingAccount(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Pool Group
+                  </label>
+                  <input
+                    type="text"
+                    value={editAccountPool}
+                    onChange={(e) => setEditAccountPool(e.target.value)}
+                    placeholder="e.g. pool1, fallback, high-priority"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">Accounts in the same pool load balance requests</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Priority Weight
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="10.0"
+                    value={editAccountWeight}
+                    onChange={(e) => setEditAccountWeight(parseFloat(e.target.value) || 1.0)}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">Higher weight gets proportionally more traffic</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Account Email / Owner Label
+                </label>
+                <input
+                  type="email"
+                  value={editAccountEmail}
+                  onChange={(e) => setEditAccountEmail(e.target.value)}
+                  placeholder="e.g. developer@company.com"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  GCP Project ID / Organization (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editAccountProjectId}
+                  onChange={(e) => setEditAccountProjectId(e.target.value)}
+                  placeholder="e.g. project-enterprise-39281"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  API Key or Refresh Token (Leave blank to keep existing)
+                </label>
+                <input
+                  type="password"
+                  value={editAccountApiKey}
+                  onChange={(e) => setEditAccountApiKey(e.target.value)}
+                  placeholder="••••••••••••••••••••••••••••••••"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-mono text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => handleTestPing(editingAccount.providerId, editingAccount.account.id)}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shadow-2xs"
+                >
+                  <Activity className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Test Ping</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingAccount(null)}
+                    className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={editAccountSaving}
+                    onClick={handleSaveAccount}
+                    className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-500/20 transition disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>{editAccountSaving ? 'Saving...' : 'Save Changes'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

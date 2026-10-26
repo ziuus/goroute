@@ -149,6 +149,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/{id}/sync-models", s.handleSyncModels)
 	s.mux.Post("/api/providers/{id}/test", s.handleTestProvider)
 	s.mux.Post("/api/providers/{id}/accounts/{accId}/test", s.handleTestAccount)
+	s.mux.Put("/api/providers/{id}/accounts/{accId}", s.handleUpdateAccount)
 	s.mux.Delete("/api/providers/{id}", s.handleDeleteProvider)
 	s.mux.Delete("/api/providers/{id}/accounts/{accId}", s.handleDeleteAccount)
 	s.mux.Post("/api/providers/{id}/reorder-accounts", s.handleReorderAccounts)
@@ -2861,6 +2862,92 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 		"pool":         req.Pool,
 		"synced_count": syncedCount,
 		"message":      fmt.Sprintf("Account %s added to pool %s successfully", accID, req.Pool),
+	})
+}
+
+func (s *Server) handleUpdateAccount(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accID := chi.URLParam(r, "accId")
+	if id == "" || accID == "" {
+		http.Error(w, "provider id and account id required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Pool         string  `json:"pool"`
+		APIKey       string  `json:"api_key"`
+		RefreshToken string  `json:"refresh_token"`
+		Email        string  `json:"email"`
+		ProjectID    string  `json:"project_id"`
+		ProfileARN   string  `json:"profile_arn"`
+		Weight       float64 `json:"weight"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		http.Error(w, "failed to load config", http.StatusInternalServerError)
+		return
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == id {
+			for j, a := range p.Accounts {
+				if a.ID == accID {
+					if req.Pool != "" {
+						cfg.Providers[i].Accounts[j].Pool = req.Pool
+					}
+					if req.APIKey != "" {
+						cfg.Providers[i].Accounts[j].APIKey = req.APIKey
+					}
+					if req.RefreshToken != "" {
+						cfg.Providers[i].Accounts[j].RefreshToken = req.RefreshToken
+					}
+					if req.Email != "" {
+						cfg.Providers[i].Accounts[j].Email = req.Email
+					}
+					if req.ProjectID != "" {
+						cfg.Providers[i].Accounts[j].ProjectID = req.ProjectID
+					}
+					if req.ProfileARN != "" {
+						cfg.Providers[i].Accounts[j].ProfileARN = req.ProfileARN
+					}
+					if req.Weight > 0 {
+						cfg.Providers[i].Accounts[j].Weight = req.Weight
+					}
+					found = true
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "account not found", http.StatusNotFound)
+		return
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, fmt.Sprintf("failed to save config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": fmt.Sprintf("Account %s updated successfully", accID),
 	})
 }
 
