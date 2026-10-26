@@ -196,6 +196,18 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 	if strings.HasPrefix(model, "agy/") {
 		model = "antigravity/" + strings.TrimPrefix(model, "agy/")
 	}
+	// Claude Code discovery mirror alias (OmniRoute parity: ccDiscoveryAliasResolve.ts)
+	// Claude Code CLI prefixes models with "claude/". Strip if "claude" is not an active provider.
+	if strings.HasPrefix(model, "claude/") {
+		if _, hasClaude := r.providers["claude"]; !hasClaude {
+			sub := strings.TrimPrefix(model, "claude/")
+			if sub == "auto" || strings.HasPrefix(sub, "combo/") {
+				model = strings.TrimPrefix(sub, "combo/")
+			} else {
+				model = sub
+			}
+		}
+	}
 
 	if combo, ok := r.combos[model]; ok && len(combo.Targets) > 0 {
 		ordered := r.orderTargets(combo)
@@ -327,6 +339,25 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 		}
 	}
 
+	// 4. Claude Code discovery mirroring (OmniRoute parity: ccDiscoveryAlias)
+	// Claude Code CLI only surfaces models with "claude/" or "anthropic/" prefix.
+	// Mirror non-Claude models under claude/<id> so Claude Code can see and use them.
+	var ccMirrors []providers.ModelInfo
+	for _, m := range models {
+		if !strings.HasPrefix(m.ID, "claude/") && !strings.HasPrefix(m.ID, "anthropic/") {
+			mirrorID := "claude/" + m.ID
+			if !seen[mirrorID] {
+				seen[mirrorID] = true
+				ccMirrors = append(ccMirrors, providers.ModelInfo{
+					ID:      mirrorID,
+					Object:  "model",
+					OwnedBy: "goroute-cc",
+				})
+			}
+		}
+	}
+	models = append(models, ccMirrors...)
+
 	return models, nil
 }
 
@@ -407,6 +438,18 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 
 	if strings.HasPrefix(model, "agy/") {
 		model = "antigravity/" + strings.TrimPrefix(model, "agy/")
+	}
+	// Claude Code discovery mirror alias (OmniRoute parity: ccDiscoveryAliasResolve.ts)
+	// Claude Code CLI prefixes models with "claude/". Strip if "claude" is not an active provider.
+	if strings.HasPrefix(model, "claude/") {
+		if _, hasClaude := r.providers["claude"]; !hasClaude {
+			sub := strings.TrimPrefix(model, "claude/")
+			if sub == "auto" || strings.HasPrefix(sub, "combo/") {
+				model = strings.TrimPrefix(sub, "combo/")
+			} else {
+				model = sub
+			}
+		}
 	}
 
 	normReq := *req

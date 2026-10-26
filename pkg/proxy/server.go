@@ -1579,6 +1579,27 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	chatReq.Model = storage.ResolveModelAlias(chatReq.Model)
 	log.Printf("[GoRoute] Incoming /v1/chat/completions model=%s stream=%v messages=%d", chatReq.Model, chatReq.Stream, len(chatReq.Messages))
 
+	// Check idempotency cache if key provided (OmniRoute parity: Phase 9.2)
+	idempotencyKey := globalIdempotency.GetKey(r)
+	if idempotencyKey != "" && !chatReq.Stream {
+		if cached, ok := globalIdempotency.Lookup(idempotencyKey); ok {
+			for k, v := range cached.headers {
+				w.Header()[k] = v
+			}
+			w.Header().Set("X-Cache", "HIT-IDEMPOTENT")
+			w.WriteHeader(cached.statusCode)
+			w.Write(cached.body)
+			return
+		}
+		rec := &responseRecorder{ResponseWriter: w}
+		defer func() {
+			if rec.statusCode >= 200 && rec.statusCode < 300 && rec.body.Len() > 0 {
+				globalIdempotency.Store(idempotencyKey, rec.statusCode, rec.Header(), rec.body.Bytes())
+			}
+		}()
+		w = rec
+	}
+
 	// Validate virtual key if keys are registered
 	if s.keyMgr != nil && s.keyMgr.HasKeys() {
 		ok, _, errMsg := s.keyMgr.Validate(r.Header.Get("Authorization"), chatReq.Model)
