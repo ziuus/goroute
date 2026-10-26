@@ -545,6 +545,13 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			continue
 		}
 
+		// Circuit Breaker Fast-Fail (OmniRoute parity: adaptiveCircuit.ts)
+		cb := resilience.GlobalCircuits.Get(target.ProviderID)
+		if !cb.AllowRequest() {
+			log.Printf("[GoRoute] Circuit Breaker OPEN for %s, skipping to next target", target.ProviderID)
+			continue
+		}
+
 		// Pre-emptive Quota Fallback (OmniRoute Parity)
 		// Skip targets automatically if remaining quota drops below 5% to avoid upstream 429
 		targetMetrics := r.GetTargetMetrics(target.ProviderID, target.Model)
@@ -563,14 +570,18 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 		elapsedMs := time.Since(start).Milliseconds()
 
 		if err != nil {
-			log.Printf("[GoRoute] Failover: target %s/%s returned error: %v (status %d), cooling down...", target.ProviderID, target.Model, err, statusCode)
-			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, err.Error(), 30*time.Second)
+			pf := resilience.ClassifyFailure(target.ProviderID, statusCode, err.Error(), 0)
+			log.Printf("[GoRoute] Failover: target %s/%s failed [%s]: %v (status %d), cooling down for %v...", target.ProviderID, target.Model, pf.Type, err, statusCode, pf.LockoutDelay)
+			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, err.Error(), pf.LockoutDelay)
+			cb.RecordFailure()
 			lastErr = err
 			if statusCode != 0 {
 				lastStatus = statusCode
 			}
 			continue
 		}
+
+		cb.RecordSuccess()
 
 		// If success (2xx or 3xx), record latency telemetry and return immediately
 		if statusCode >= 200 && statusCode < 400 {
@@ -716,16 +727,27 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 		if resilience.GlobalCooldown.IsCooling(p.ID(), req.Model) {
 			continue
 		}
+		cb := resilience.GlobalCircuits.Get(p.ID())
+		if !cb.AllowRequest() {
+			continue
+		}
 		targetReq := *req
 		translator.SanitizeChatRequest(p.ID(), p.Type(), &targetReq)
 		start := time.Now()
 		body, isStream, statusCode, err := p.ChatCompletion(ctx, &targetReq)
 		if err == nil && statusCode >= 200 && statusCode < 400 {
 			r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
+			cb.RecordSuccess()
 			return body, isStream, statusCode, nil
 		}
-		log.Printf("[GoRoute] executeDirect: provider %s failed with status %d (err: %v), cooling down and trying next...", p.ID(), statusCode, err)
-		resilience.GlobalCooldown.MarkCooldown(p.ID(), req.Model, statusCode, "executeDirect failover", 1*time.Minute)
+		errMsg := "executeDirect failover"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		pf := resilience.ClassifyFailure(p.ID(), statusCode, errMsg, 0)
+		log.Printf("[GoRoute] executeDirect: provider %s failed [%s] (status %d, err: %v), cooling down for %v...", p.ID(), pf.Type, statusCode, err, pf.LockoutDelay)
+		resilience.GlobalCooldown.MarkCooldown(p.ID(), req.Model, statusCode, errMsg, pf.LockoutDelay)
+		cb.RecordFailure()
 		lastErr = err
 		lastStatus = statusCode
 		if body != nil {
