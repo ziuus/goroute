@@ -315,7 +315,7 @@ wire_api = "responses"`;
       setQuotas(quotaRes);
       setFleet(fleetRes.fleet || []);
       setCliAgents(cliRes.tools || []);
-      setCatalog(catRes.entries || []);
+      setCatalog(catRes.entries || catRes.data || []);
       setTrafficLogs(logsRes.logs || []);
       setAliases(aliasRes.aliases || {});
       setThinkingBudget(budgetRes.budget || 0);
@@ -554,16 +554,89 @@ wire_api = "responses"`;
   const gatewayMem = topology?.nodes?.find((n: any) => n.type === 'gateway')?.details?.memory || '3.7 MB';
   const gatewayUptime = topology?.nodes?.find((n: any) => n.type === 'gateway')?.details?.uptime || 'Active';
 
-  // Filtered catalog
+  // Compute real average latency from actual traffic logs
+  const avgLatency = useMemo(() => {
+    const valid = trafficLogs.filter((l: any) => (l.latency_ms || l.duration_ms || 0) > 0);
+    if (!valid.length) return '0.86';
+    const sum = valid.reduce((acc: number, l: any) => acc + (l.latency_ms || l.duration_ms || 0), 0);
+    return (sum / valid.length).toFixed(1);
+  }, [trafficLogs]);
+
+  const cleanQuery = searchQuery.trim().toLowerCase();
+
+  // Universal Filtered Providers (searches id, name, type, base_url, accounts, models)
+  const filteredProviders = useMemo(() => {
+    if (!cleanQuery) return providers;
+    return providers.filter(p => {
+      const idMatch = p.id?.toLowerCase().includes(cleanQuery);
+      const nameMatch = p.label?.toLowerCase().includes(cleanQuery) || (p as any).name?.toLowerCase().includes(cleanQuery);
+      const typeMatch = p.type?.toLowerCase().includes(cleanQuery) || p.details?.type?.toLowerCase().includes(cleanQuery);
+      const urlMatch = p.details?.base_url?.toLowerCase().includes(cleanQuery);
+      const accounts = p.details?.accounts || [];
+      const accMatch = accounts.some((a: any) =>
+        a.email?.toLowerCase().includes(cleanQuery) ||
+        a.username?.toLowerCase().includes(cleanQuery) ||
+        a.id?.toLowerCase().includes(cleanQuery)
+      );
+      const modelMatch = catalog.some((m: any) =>
+        (m.provider === p.id || m.provider?.includes(p.id)) && (m.model?.toLowerCase().includes(cleanQuery) || m.id?.toLowerCase().includes(cleanQuery))
+      );
+      return idMatch || nameMatch || typeMatch || urlMatch || accMatch || modelMatch;
+    });
+  }, [providers, cleanQuery, catalog]);
+
+  // Universal Filtered Combos
+  const filteredCombos = useMemo(() => {
+    if (!cleanQuery) return combos;
+    return combos.filter(c => {
+      const nameMatch = c.name?.toLowerCase().includes(cleanQuery);
+      const stratMatch = c.strategy?.toLowerCase().includes(cleanQuery);
+      const targetMatch = c.targets?.some((t: any) =>
+        t.provider_id?.toLowerCase().includes(cleanQuery) || t.model?.toLowerCase().includes(cleanQuery)
+      );
+      return nameMatch || stratMatch || targetMatch;
+    });
+  }, [combos, cleanQuery]);
+
+  // Universal Filtered CLI Agents
+  const filteredCliAgents = useMemo(() => {
+    if (!cleanQuery) return cliAgents;
+    return cliAgents.filter(a =>
+      a.name?.toLowerCase().includes(cleanQuery) ||
+      a.id?.toLowerCase().includes(cleanQuery) ||
+      a.category?.toLowerCase().includes(cleanQuery) ||
+      a.command?.toLowerCase().includes(cleanQuery) ||
+      a.settings_file?.toLowerCase().includes(cleanQuery)
+    );
+  }, [cliAgents, cleanQuery]);
+
+  // Universal Filtered Traffic Inspector Logs
+  const filteredTrafficLogs = useMemo(() => {
+    if (!cleanQuery) return trafficLogs;
+    return trafficLogs.filter(log =>
+      log.model?.toLowerCase().includes(cleanQuery) ||
+      log.provider?.toLowerCase().includes(cleanQuery) ||
+      String(log.status_code || log.status || '').includes(cleanQuery) ||
+      log.id?.toLowerCase().includes(cleanQuery)
+    );
+  }, [trafficLogs, cleanQuery]);
+
+  // Filtered Catalog
   const filteredCatalog = useMemo(() => {
     return catalog.filter(item => {
-      const matchQuery = !searchQuery ||
-        item.model?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.provider?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchQuery = !cleanQuery ||
+        item.model?.toLowerCase().includes(cleanQuery) ||
+        item.provider?.toLowerCase().includes(cleanQuery) ||
+        item.id?.toLowerCase().includes(cleanQuery);
       const matchProv = catalogFilterProvider === 'all' || item.provider === catalogFilterProvider;
       return matchQuery && matchProv;
     });
-  }, [catalog, searchQuery, catalogFilterProvider]);
+  }, [catalog, cleanQuery, catalogFilterProvider]);
+
+  const totalSearchResults = useMemo(() => {
+    if (!cleanQuery) return 0;
+    return filteredProviders.length + filteredCombos.length + filteredCatalog.length + filteredCliAgents.length + filteredTrafficLogs.length;
+  }, [cleanQuery, filteredProviders, filteredCombos, filteredCatalog, filteredCliAgents, filteredTrafficLogs]);
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark bg-[#0B0F17] text-slate-100' : 'bg-slate-50 text-slate-900'} transition-colors`}>
@@ -585,7 +658,7 @@ wire_api = "responses"`;
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-white uppercase">GoRoute</span>
-              <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">v0.3.0</span>
+              <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">v0.6.1</span>
             </div>
           </div>
 
@@ -597,7 +670,7 @@ wire_api = "responses"`;
                 <span className="font-semibold text-slate-900 dark:text-white">:8128</span>
               </span>
               <span>•</span>
-              <span><strong>0.86ms</strong> routing</span>
+              <span><strong>{avgLatency}ms</strong> routing</span>
               <span>•</span>
               <span><strong>{gatewayMem}</strong> RSS</span>
             </div>
@@ -682,15 +755,30 @@ wire_api = "responses"`;
             })}
           </nav>
 
-          <div className="relative min-w-[220px]">
+          <div className="relative min-w-[260px] sm:min-w-[320px]">
             <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              placeholder="Search models, providers..."
+              placeholder="Search models, providers, agents, combos..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
+              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-24 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
             />
+            {cleanQuery && (
+              <div className="absolute right-2 top-1.5 flex items-center gap-1.5">
+                <span className="rounded bg-rose-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-rose-600 dark:text-rose-400">
+                  {totalSearchResults} {totalSearchResults === 1 ? 'match' : 'matches'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="rounded p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  title="Clear search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -722,6 +810,116 @@ wire_api = "responses"`;
               </div>
             </div>
 
+            {/* Universal Search Results Banner (When Query Active) */}
+            {cleanQuery && (
+              <div className="rounded-2xl border border-rose-300/80 bg-rose-50/60 p-5 dark:border-rose-900/50 dark:bg-rose-950/25">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-200/70 pb-3 dark:border-rose-900/50">
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                      Search Results for &ldquo;{searchQuery}&rdquo; ({totalSearchResults} total matches)
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="text-xs font-semibold text-rose-600 hover:underline dark:text-rose-400"
+                  >
+                    Clear Filter
+                  </button>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {/* Matching Providers */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Providers</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        {filteredProviders.length}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 space-y-1.5 max-h-36 overflow-y-auto">
+                      {filteredProviders.slice(0, 5).map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => setActiveTab('providers')}
+                          className="w-full text-left font-mono text-[11px] text-rose-600 hover:underline truncate dark:text-rose-400 block"
+                        >
+                          ▪ {p.id} ({p.details?.type || 'openai'})
+                        </button>
+                      ))}
+                      {filteredProviders.length === 0 && <span className="text-[11px] text-slate-400">No matching providers</span>}
+                    </div>
+                  </div>
+
+                  {/* Matching Combos */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Combos</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        {filteredCombos.length}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 space-y-1.5 max-h-36 overflow-y-auto">
+                      {filteredCombos.slice(0, 5).map(c => (
+                        <button
+                          key={c.name}
+                          onClick={() => setActiveTab('combos')}
+                          className="w-full text-left font-mono text-[11px] text-rose-600 hover:underline truncate dark:text-rose-400 block"
+                        >
+                          ▪ {c.name} ({c.strategy})
+                        </button>
+                      ))}
+                      {filteredCombos.length === 0 && <span className="text-[11px] text-slate-400">No matching combos</span>}
+                    </div>
+                  </div>
+
+                  {/* Matching Models */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Catalog Models</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        {filteredCatalog.length}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 space-y-1.5 max-h-36 overflow-y-auto">
+                      {filteredCatalog.slice(0, 5).map((m, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveTab('catalog')}
+                          className="w-full text-left font-mono text-[11px] text-rose-600 hover:underline truncate dark:text-rose-400 block"
+                        >
+                          ▪ {m.model} ({m.provider})
+                        </button>
+                      ))}
+                      {filteredCatalog.length === 0 && <span className="text-[11px] text-slate-400">No matching models</span>}
+                    </div>
+                  </div>
+
+                  {/* Matching Agents */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">CLI Agents</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        {filteredCliAgents.length}
+                      </span>
+                    </div>
+                    <div className="mt-2.5 space-y-1.5 max-h-36 overflow-y-auto">
+                      {filteredCliAgents.slice(0, 5).map(a => (
+                        <button
+                          key={a.id}
+                          onClick={() => setActiveTab('fleet')}
+                          className="w-full text-left font-mono text-[11px] text-rose-600 hover:underline truncate dark:text-rose-400 block"
+                        >
+                          ▪ {a.name} ({a.command || a.id})
+                        </button>
+                      ))}
+                      {filteredCliAgents.length === 0 && <span className="text-[11px] text-slate-400">No matching agents</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Editorial 4-Stat Strip */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="liquid-card p-6">
@@ -729,7 +927,7 @@ wire_api = "responses"`;
                   01. / DISPATCH LATENCY
                 </div>
                 <div className="mt-3 flex items-baseline">
-                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">0.86</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">{avgLatency}</span>
                   <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">ms</span>
                 </div>
                 <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Sub-Millisecond</div>
@@ -761,8 +959,8 @@ wire_api = "responses"`;
                   <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">Active</span>
                 </div>
                 <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Aggregated Accounts</div>
-                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                  Antigravity, Kiro, Codex, Apinex, Groq
+                <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {providers.map(p => p.id).join(', ') || 'Connected providers'}
                 </div>
               </div>
 
@@ -803,7 +1001,7 @@ wire_api = "responses"`;
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {combos.slice(0, 4).map(c => (
+                  {filteredCombos.slice(0, 4).map(c => (
                     <div
                       key={c.name}
                       className="group flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/50 hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-850 dark:hover:border-rose-500/50"
@@ -853,12 +1051,12 @@ wire_api = "responses"`;
                     <h3 className="mt-1 text-sm font-bold text-slate-900 dark:text-white">Host AI Fleet</h3>
                   </div>
                   <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
-                    {cliAgents.filter(a => a.detected).length} Detected
+                    {filteredCliAgents.filter(a => a.detected).length} Detected
                   </span>
                 </div>
 
                 <div className="mt-4 space-y-2.5">
-                  {cliAgents.filter(a => a.detected).slice(0, 5).map(agent => (
+                  {filteredCliAgents.filter(a => a.detected).slice(0, 5).map(agent => (
                     <div
                       key={agent.id}
                       className="group flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/50 hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-850 dark:hover:border-rose-500/50"
@@ -1403,8 +1601,21 @@ wire_api = "responses"`;
             </div>
 
             <div className="space-y-4">
-              {providers
-                .filter(p => !searchQuery || p.id.toLowerCase().includes(searchQuery.toLowerCase()))
+              {filteredProviders.length === 0 && (
+                <div className="liquid-card p-12 text-center">
+                  <Search className="mx-auto h-8 w-8 text-slate-400" />
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No providers match &ldquo;{searchQuery}&rdquo;</h3>
+                  <p className="mt-1 text-xs text-slate-500">Search by provider ID, display name, account email, or served model name.</p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                  >
+                    Clear search filter
+                  </button>
+                </div>
+              )}
+
+              {filteredProviders
                 .map(p => {
                   const accCount = p.details?.accounts_count ?? p.details?.accounts?.length ?? 1;
                   const accounts = p.details?.accounts || [];
@@ -1558,7 +1769,21 @@ wire_api = "responses"`;
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {combos.map(c => {
+              {filteredCombos.length === 0 && (
+                <div className="col-span-full liquid-card p-12 text-center">
+                  <Search className="mx-auto h-8 w-8 text-slate-400" />
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No combos match &ldquo;{searchQuery}&rdquo;</h3>
+                  <p className="mt-1 text-xs text-slate-500">Search by combo name, strategy, target provider, or target model.</p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                  >
+                    Clear search filter
+                  </button>
+                </div>
+              )}
+
+              {filteredCombos.map(c => {
                 const targets = c.targets || [];
                 const strategy = c.strategy || 'failover';
                 return (
@@ -1786,36 +2011,51 @@ wire_api = "responses"`;
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
-                    {trafficLogs.slice(0, 20).map((log, i) => (
-                      <tr
-                        key={i}
-                        onClick={() => setInspectingLog(log)}
-                        className="cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                      >
-                        <td className="p-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200">{log.model}</td>
-                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{log.tokens || log.prompt_tokens || '14'} tok</td>
-                        <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{log.latency_ms || log.duration_ms || 230}ms</td>
-                        <td className="p-3.5">
-                          <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ${
-                            (log.status_code || log.status) >= 400 ? 'bg-red-500/10 text-red-600' : 'bg-emerald-500/10 text-emerald-600'
-                          }`}>
-                            {log.status_code || log.status || 200} OK
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-slate-400 dark:text-slate-500">{new Date(log.created_at || log.timestamp || Date.now()).toLocaleTimeString()}</td>
-                        <td className="p-3.5 text-right">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReplayLog(log.id || `req_${i}`);
-                            }}
-                            className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-800 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                          >
-                            <RotateCcw className="h-3 w-3" /> Replay
-                          </button>
+                    {filteredTrafficLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-xs text-slate-400">
+                          {searchQuery ? `No request logs match "${searchQuery}"` : 'No traffic recorded yet. Make a request via :8128 to see live metrics.'}
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredTrafficLogs.slice(0, 40).map((log, i) => (
+                        <tr
+                          key={i}
+                          onClick={() => setInspectingLog(log)}
+                          className="cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                        >
+                          <td className="p-3.5 font-mono font-semibold text-slate-800 dark:text-slate-200">{log.model || 'unknown'}</td>
+                          <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{(log.tokens || log.prompt_tokens || log.total_tokens || 0)} tok</td>
+                          <td className="p-3.5 font-mono text-slate-500 dark:text-slate-400">{(log.latency_ms || log.duration_ms || 0)}ms</td>
+                          <td className="p-3.5">
+                            {(() => {
+                              const sc = log.status_code || log.status || 200;
+                              const isErr = sc >= 400;
+                              const label = isErr ? (sc === 429 ? '429 RATE LIMIT' : `${sc} ERROR`) : `${sc} OK`;
+                              return (
+                                <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold ${
+                                  isErr ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                }`}>
+                                  {label}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td className="p-3.5 text-slate-400 dark:text-slate-500">{new Date(log.created_at || log.timestamp || Date.now()).toLocaleTimeString()}</td>
+                          <td className="p-3.5 text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleReplayLog(log.id || `req_${i}`);
+                              }}
+                              className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-800 dark:border-slate-800 dark:text-neutral-300 dark:hover:bg-neutral-800 ml-auto"
+                            >
+                              <RotateCcw className="h-3 w-3" /> Replay
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1834,7 +2074,21 @@ wire_api = "responses"`;
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {cliAgents.map(agent => (
+              {filteredCliAgents.length === 0 && (
+                <div className="col-span-full liquid-card p-12 text-center">
+                  <Search className="mx-auto h-8 w-8 text-slate-400" />
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No agents match &ldquo;{searchQuery}&rdquo;</h3>
+                  <p className="mt-1 text-xs text-slate-500">Search by agent name, command, settings path, or category.</p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                  >
+                    Clear search filter
+                  </button>
+                </div>
+              )}
+
+              {filteredCliAgents.map(agent => (
                 <div key={agent.id} className="liquid-card flex flex-col justify-between p-5">
                   <div>
                     <div className="flex items-center justify-between">
