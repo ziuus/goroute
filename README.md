@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="./assets/logo.png" alt="GoRoute" width="480" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/logo-light.png">
+    <img src="./assets/logo.png" alt="GoRoute" width="460" />
+  </picture>
 </p>
 
 <p align="center">

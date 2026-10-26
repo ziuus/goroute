@@ -428,6 +428,12 @@ func (s *Server) Handler() http.Handler {
 			}
 		}
 
+		// Normalize casing for API paths (prevents uppercase bypass GHSA-jvqc-mp9f-q936)
+		pLower := strings.ToLower(r.URL.Path)
+		if strings.HasPrefix(pLower, "/v1/") || strings.HasPrefix(pLower, "/chat/") || strings.HasPrefix(pLower, "/models") || strings.HasPrefix(pLower, "/v1beta/") {
+			r.URL.Path = pLower
+		}
+
 		s.mux.ServeHTTP(w, r)
 	})
 }

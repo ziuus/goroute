@@ -16,7 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/resilience"
 )
 
 const (
@@ -149,11 +151,18 @@ func (p *Provider) Accounts() []*Account {
 	return res
 }
 
-func (p *Provider) nextAccount() *Account {
+func (p *Provider) nextAccount(pinnedID string) *Account {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if len(p.accounts) == 0 {
 		return nil
+	}
+	if pinnedID != "" {
+		for _, a := range p.accounts {
+			if a.ID == pinnedID || a.AccountID == pinnedID {
+				return a
+			}
+		}
 	}
 	next := atomic.AddUint64(&p.idx, 1)
 	return p.accounts[next%uint64(len(p.accounts))]
@@ -205,11 +214,19 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		return nil, false, http.StatusServiceUnavailable, fmt.Errorf("no codex accounts available")
 	}
 
+	sessionKey := affinity.DeriveSessionKey(nil, req)
+	pinnedAcc := affinity.GlobalManager.GetAffinity(sessionKey, p.id)
+
 	var lastErr error
 	var lastStatus int
 
 	for i := 0; i < attempts; i++ {
-		acc := p.nextAccount()
+		var acc *Account
+		if i == 0 && pinnedAcc != "" {
+			acc = p.nextAccount(pinnedAcc)
+		} else {
+			acc = p.nextAccount("")
+		}
 		if acc == nil {
 			break
 		}
@@ -254,7 +271,20 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			lastErr = fmt.Errorf("codex account %s returned HTTP %d", acc.ID, resp.StatusCode)
 			lastStatus = resp.StatusCode
 			log.Printf("[codex] Account %s returned %d, rotating to next account", acc.ID, resp.StatusCode)
+
+			// Evict session affinity if this pinned account failed
+			if sessionKey != "" && pinnedAcc == acc.ID {
+				affinity.GlobalManager.EvictAffinity(sessionKey, p.id, acc.ID)
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				resilience.GlobalCooldown.MarkCooldown(p.id, req.Model, 429, "rate_limit", 60*time.Second)
+			}
 			continue
+		}
+
+		// Success: record session affinity for prompt cache continuity
+		if sessionKey != "" && acc.ID != "" {
+			affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
 		}
 
 		isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")

@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/resilience"
 )
 
 type Account struct {
@@ -158,12 +160,20 @@ func (p *Provider) TestConnection(ctx context.Context) error {
 	return nil
 }
 
-func (p *Provider) getNextAccount() (*Account, error) {
+func (p *Provider) getNextAccount(pinnedID string) (*Account, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if len(p.accounts) == 0 {
 		return nil, fmt.Errorf("no accounts configured for cursor provider %s", p.id)
+	}
+
+	if pinnedID != "" {
+		for _, a := range p.accounts {
+			if a.ID == pinnedID || a.Email == pinnedID {
+				return a, nil
+			}
+		}
 	}
 
 	acc := p.accounts[p.accIndex]
@@ -172,39 +182,85 @@ func (p *Provider) getNextAccount() (*Account, error) {
 }
 
 func (p *Provider) Execute(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
-	acc, err := p.getNextAccount()
-	if err != nil {
-		return nil, false, http.StatusServiceUnavailable, err
+	attempts := len(p.accounts)
+	if attempts == 0 {
+		return nil, false, http.StatusServiceUnavailable, fmt.Errorf("no accounts configured for cursor provider %s", p.id)
 	}
 
-	token, err := acc.GetValidAccessToken(ctx, p.httpClient)
-	if err != nil {
-		return nil, false, http.StatusUnauthorized, fmt.Errorf("cursor auth error: %w", err)
-	}
+	sessionKey := affinity.DeriveSessionKey(nil, req)
+	pinnedAcc := affinity.GlobalManager.GetAffinity(sessionKey, p.id)
+
+	var lastErr error
+	var lastStatus int
 
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, false, http.StatusBadRequest, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api2.cursor.sh/v1/chat/completions", bytes.NewReader(payload))
-	if err != nil {
-		return nil, false, http.StatusInternalServerError, err
+	for i := 0; i < attempts; i++ {
+		var acc *Account
+		var err error
+		if i == 0 && pinnedAcc != "" {
+			acc, err = p.getNextAccount(pinnedAcc)
+		} else {
+			acc, err = p.getNextAccount("")
+		}
+		if err != nil || acc == nil {
+			continue
+		}
+
+		token, err := acc.GetValidAccessToken(ctx, p.httpClient)
+		if err != nil {
+			lastErr = fmt.Errorf("cursor auth error on account %s: %w", acc.ID, err)
+			lastStatus = http.StatusUnauthorized
+			continue
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api2.cursor.sh/v1/chat/completions", bytes.NewReader(payload))
+		if err != nil {
+			return nil, false, http.StatusInternalServerError, err
+		}
+
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("User-Agent", "Cursor/0.45.0")
+		httpReq.Header.Set("connect-protocol-version", "1")
+		httpReq.Header.Set("connect-accept-encoding", "gzip")
+
+		resp, err := p.httpClient.Do(httpReq)
+		if err != nil {
+			lastErr = err
+			lastStatus = http.StatusBadGateway
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("cursor account %s returned HTTP %d", acc.ID, resp.StatusCode)
+			lastStatus = resp.StatusCode
+
+			if sessionKey != "" && pinnedAcc == acc.ID {
+				affinity.GlobalManager.EvictAffinity(sessionKey, p.id, acc.ID)
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				resilience.GlobalCooldown.MarkCooldown(p.id, req.Model, 429, "rate_limit", 60*time.Second)
+			}
+			continue
+		}
+
+		if sessionKey != "" && acc.ID != "" {
+			affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
+		}
+
+		isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") || req.Stream
+		return resp.Body, isStream, resp.StatusCode, nil
 	}
 
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("User-Agent", "Cursor/0.45.0")
-	httpReq.Header.Set("connect-protocol-version", "1")
-	httpReq.Header.Set("connect-accept-encoding", "gzip")
-
-	resp, err := p.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, false, http.StatusBadGateway, err
+	if lastStatus == 0 {
+		lastStatus = http.StatusBadGateway
 	}
-
-	isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") || req.Stream
-	return resp.Body, isStream, resp.StatusCode, nil
+	return nil, false, lastStatus, lastErr
 }
 
 // TestAccount checks connection against Cursor API
