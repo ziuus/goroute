@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ziuus/goroute/pkg/storage"
 )
 
 func TestGetAndSaveAndDisconnectToolConfig(t *testing.T) {
@@ -14,6 +16,9 @@ func TestGetAndSaveAndDisconnectToolConfig(t *testing.T) {
 	os.Setenv("HOME", tempHome)
 	os.Setenv("USERPROFILE", tempHome)
 	defer func() {
+		if db := storage.GetDB(); db != nil {
+			_ = db.Close()
+		}
 		os.Setenv("HOME", origHome)
 		os.Setenv("USERPROFILE", origUserProfile)
 	}()
