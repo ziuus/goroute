@@ -140,6 +140,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/sync-omniroute", s.handleSyncOmniRoute)
 	s.mux.Get("/api/oauth/kiro/device-authorize", s.handleKiroDeviceAuthorize)
 	s.mux.Post("/api/oauth/kiro/device-poll", s.handleKiroDevicePoll)
+	s.mux.Get("/api/oauth/codex/device-authorize", s.handleCodexDeviceAuthorize)
+	s.mux.Post("/api/oauth/codex/device-poll", s.handleCodexDevicePoll)
 	s.mux.Post("/api/providers/import-antigravity", s.handleImportAntigravity)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
@@ -2365,6 +2367,102 @@ func (s *Server) handleKiroDevicePoll(w http.ResponseWriter, r *http.Request) {
 		"pool":       req.Pool,
 		"profileArn": res.ProfileARN,
 		"message":    fmt.Sprintf("Successfully connected Kiro account %s!", accID),
+	})
+}
+
+func (s *Server) handleCodexDeviceAuthorize(w http.ResponseWriter, r *http.Request) {
+	resp, err := codex.StartDeviceAuth(r.Context())
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleCodexDevicePoll(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DeviceAuthID string `json:"deviceAuthId"`
+		UserCode     string `json:"userCode"`
+		Pool         string `json:"pool"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.DeviceAuthID == "" || req.UserCode == "" {
+		http.Error(w, "deviceAuthId and userCode required", http.StatusBadRequest)
+		return
+	}
+	if req.Pool == "" {
+		req.Pool = "pool1"
+	}
+
+	res, err := codex.PollAndExchangeDeviceToken(r.Context(), req.DeviceAuthID, req.UserCode)
+	if err != nil {
+		if strings.Contains(err.Error(), "authorization_pending") {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"pending": true,
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	accID := fmt.Sprintf("codex-oauth-%d", time.Now().Unix())
+	if err == nil && cfg != nil {
+		newAcc := config.AccountConfig{
+			ID:           accID,
+			Pool:         req.Pool,
+			RefreshToken: res.RefreshToken,
+			AccessToken:  res.AccessToken,
+			Weight:       1.0,
+		}
+		added := false
+		for i, p := range cfg.Providers {
+			if p.ID == "codex" {
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, newAcc)
+				added = true
+				break
+			}
+		}
+		if !added {
+			cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+				ID:       "codex",
+				Type:     "codex",
+				Strategy: "priority",
+				Accounts: []config.AccountConfig{newAcc},
+			})
+		}
+		_ = cfg.Save(cfgPath)
+		_ = s.Reload()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"pending":   false,
+		"accountId": accID,
+		"token":     res,
 	})
 }
 
