@@ -148,6 +148,14 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 	s.proxyUniversal(w, r, "/audio/transcriptions")
 }
 
+func (s *Server) handleAudioTranslations(w http.ResponseWriter, r *http.Request) {
+	s.proxyUniversal(w, r, "/audio/translations")
+}
+
+func (s *Server) handleImageEdits(w http.ResponseWriter, r *http.Request) {
+	s.proxyUniversal(w, r, "/images/edits")
+}
+
 func (s *Server) handleRerank(w http.ResponseWriter, r *http.Request) {
 	s.proxyUniversal(w, r, "/rerank")
 }

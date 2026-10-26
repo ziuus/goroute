@@ -54,8 +54,29 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var reqMap map[string]interface{}
+	var modelStr string
 	if err := json.Unmarshal(bodyBytes, &reqMap); err == nil {
-		modelStr, _ := reqMap["model"].(string)
+		modelStr, _ = reqMap["model"].(string)
+	}
+
+	// Validate virtual key if keys are registered
+	if s.keyMgr != nil && s.keyMgr.HasKeys() {
+		ok, _, errMsg := s.keyMgr.ValidateRequest(r, modelStr)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"type": "error",
+				"error": map[string]interface{}{
+					"type":    "authentication_error",
+					"message": errMsg,
+				},
+			})
+			return
+		}
+	}
+
+	if reqMap != nil {
 		if target, ok := s.router.ResolveTarget(modelStr); ok {
 			if prov, ok := s.router.GetProvider(target.ProviderID); ok {
 				if aProv, ok := prov.(AnthropicNativeProvider); ok && aProv.SupportsAnthropic() {

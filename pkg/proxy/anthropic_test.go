@@ -60,6 +60,7 @@ func TestAnthropicMessagesHandler(t *testing.T) {
 	r.RegisterProvider(&mockAnthropicProvider{})
 	limiter := quota.NewLimiter()
 	srv := NewServer(r, limiter, false)
+	srv.SetConfigPaths("", "")
 
 	// Test Non-streaming request
 	body := `{"model":"claude-3-7-sonnet","messages":[{"role":"user","content":"Hi"}],"stream":false}`

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -131,6 +132,43 @@ func (m *Manager) RevokeKey(id string) error {
 		delete(m.byID, id)
 	}
 	return nil
+}
+
+// ExtractToken extracts auth token from standard headers (Authorization, x-api-key, x-goog-api-key) or query (?key=)
+func ExtractToken(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		trimmed := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	if xKey := r.Header.Get("x-api-key"); xKey != "" {
+		return strings.TrimSpace(xKey)
+	}
+	if gKey := r.Header.Get("x-goog-api-key"); gKey != "" {
+		return strings.TrimSpace(gKey)
+	}
+	if r.URL != nil {
+		if qKey := r.URL.Query().Get("key"); qKey != "" {
+			return strings.TrimSpace(qKey)
+		}
+	}
+	return ""
+}
+
+// ValidateRequest extracts token across headers and validates against virtual key store
+func (m *Manager) ValidateRequest(r *http.Request, model string) (bool, *config.VirtualKey, string) {
+	if !m.HasKeys() {
+		return true, nil, ""
+	}
+	token := ExtractToken(r)
+	if token == "" {
+		return false, nil, "Missing API key (provide via Authorization: Bearer, x-api-key, or x-goog-api-key)"
+	}
+	return m.Validate(token, model)
 }
 
 func (m *Manager) Validate(authHeader string, model string) (bool, *config.VirtualKey, string) {

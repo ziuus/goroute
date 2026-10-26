@@ -43,6 +43,7 @@ import (
 	"github.com/ziuus/goroute/pkg/providers/mistral"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/quota"
+	"github.com/ziuus/goroute/pkg/tokens"
 	"github.com/ziuus/goroute/pkg/resilience"
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/rtk"
@@ -50,7 +51,6 @@ import (
 	"github.com/ziuus/goroute/pkg/webhooks"
 	"github.com/ziuus/goroute/pkg/store"
 	"github.com/ziuus/goroute/pkg/sync"
-	"github.com/ziuus/goroute/pkg/tokens"
 	"github.com/ziuus/goroute/pkg/tunnel"
 	"github.com/ziuus/goroute/web"
 )
@@ -124,6 +124,9 @@ func (s *Server) setupRoutes() {
 	})
 
 	s.mux.Get("/health", s.handleHealth)
+	s.mux.Get("/healthz", s.handleHealthz)
+	s.mux.Get("/livez", s.handleLivez)
+	s.mux.Get("/readyz", s.handleReadyz)
 	s.mux.Get("/api/status", s.handleAPIStatus)
 	s.mux.Get("/api/catalog", s.handleCatalog)
 	s.mux.Get("/api/logs", s.handleLogs)
@@ -309,10 +312,14 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
 	s.mux.Post("/messages", s.handleMessages)
+	s.mux.Post("/v1/messages/count_tokens", s.handleCountTokens)
+	s.mux.Post("/api/v1/messages/count_tokens", s.handleCountTokens)
 	s.mux.Post("/v1/embeddings", s.handleEmbeddings)
 	s.mux.Post("/v1/images/generations", s.handleImageGenerations)
+	s.mux.Post("/v1/images/edits", s.handleImageEdits)
 	s.mux.Post("/v1/audio/speech", s.handleAudioSpeech)
 	s.mux.Post("/v1/audio/transcriptions", s.handleAudioTranscriptions)
+	s.mux.Post("/v1/audio/translations", s.handleAudioTranslations)
 	s.mux.Post("/v1/rerank", s.handleRerank)
 	s.mux.Post("/v1/moderations", s.handleModerations)
 
@@ -1562,6 +1569,70 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok\n"))
+}
+
+func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("alive\n"))
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	provList := s.router.GetAllProviders()
+	if len(provList) == 0 {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("not ready: no providers configured\n"))
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ready\n"))
+}
+
+func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	var req tokens.CountTokensRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"type": "error",
+			"error": map[string]interface{}{
+				"type":    "invalid_request_error",
+				"message": "Invalid JSON body: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	if s.keyMgr != nil && s.keyMgr.HasKeys() {
+		ok, _, errMsg := s.keyMgr.ValidateRequest(r, req.Model)
+		if !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"type": "error",
+				"error": map[string]interface{}{
+					"type":    "authentication_error",
+					"message": errMsg,
+				},
+			})
+			return
+		}
+	}
+
+	count := tokens.EstimateTokens(&req)
+	json.NewEncoder(w).Encode(tokens.CountTokensResponse{
+		InputTokens: count,
+	})
+}
+
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	models, err := s.router.ListModels(r.Context())
 	if err != nil {
@@ -1610,7 +1681,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Validate virtual key if keys are registered
 	if s.keyMgr != nil && s.keyMgr.HasKeys() {
-		ok, _, errMsg := s.keyMgr.Validate(r.Header.Get("Authorization"), chatReq.Model)
+		ok, _, errMsg := s.keyMgr.ValidateRequest(r, chatReq.Model)
 		if !ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
