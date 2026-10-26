@@ -36,7 +36,29 @@ var (
 		{Name: "credit_card", Regex: regexp.MustCompile(`\b(?:\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}|\d{4}[-\s]?\d{6}[-\s]?\d{4,5})\b`), Replacement: "[CC_REDACTED]", Severity: "high"},
 		{Name: "phone_us", Regex: regexp.MustCompile(`(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}`), Replacement: "[PHONE_REDACTED]", Severity: "medium"},
 	}
+
+	// Prompt injection and jailbreak escape patterns (OmniRoute parity: promptInjection.ts)
+	InjectionRules = []SensitiveRule{
+		{Name: "system_override_inline", Regex: regexp.MustCompile(`(?i)\bsystem\s*:\s*override\b`), Severity: "high"},
+		{Name: "markdown_system_block", Regex: regexp.MustCompile("(?i)`{3,}\\s*system\\b"), Severity: "high"},
+		{Name: "ignore_previous", Regex: regexp.MustCompile(`(?i)\bignore\s+(all\s+)?previous\s+instructions\b`), Severity: "high"},
+		{Name: "disregard_instructions", Regex: regexp.MustCompile(`(?i)\bdisregard\s+(all\s+)?prior\s+instructions\b`), Severity: "high"},
+		{Name: "developer_mode", Regex: regexp.MustCompile(`(?i)\benable\s+developer\s+mode\b`), Severity: "high"},
+	}
 )
+
+// DetectPromptInjection checks if text contains adversarial system prompt overrides.
+func DetectPromptInjection(content string) (bool, string) {
+	if content == "" {
+		return false, ""
+	}
+	for _, rule := range InjectionRules {
+		if rule.Regex.MatchString(content) {
+			return true, rule.Name
+		}
+	}
+	return false, ""
+}
 
 type RedactionResult struct {
 	CleanedText string
