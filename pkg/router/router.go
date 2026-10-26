@@ -222,6 +222,41 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 		return Target{ProviderID: res.ProviderID, Model: res.TargetModel}, true
 	}
 
+	// 4. Default model alias seed fallback (OmniRoute parity)
+	defaultAliases := map[string]Target{
+		"gemini-3.1-pro":               {ProviderID: "antigravity", Model: "gemini-pro-agent"},
+		"gemini-3.1-flash-lite-preview": {ProviderID: "antigravity", Model: "gemini-3.1-flash-lite"},
+		"claude-sonnet-4-6":             {ProviderID: "antigravity", Model: "claude-sonnet-4-6"},
+		"claude-opus-4-6":               {ProviderID: "antigravity", Model: "claude-opus-4-6"},
+		"claude-opus-4-6-thinking":      {ProviderID: "antigravity", Model: "claude-opus-4-6-thinking"},
+		"gemini-flash":                  {ProviderID: "antigravity", Model: "gemini-2.5-flash"},
+		"gemini-flash-lite":             {ProviderID: "antigravity", Model: "gemini-3.1-flash-lite"},
+		"gemini-2.5-flash":              {ProviderID: "antigravity", Model: "gemini-2.5-flash"},
+		"gemini-3.8-flash-high":         {ProviderID: "antigravity", Model: "gemini-3.8-flash-high"},
+		"sonnet":                        {ProviderID: "antigravity", Model: "claude-sonnet-4-6"},
+		"opus":                          {ProviderID: "antigravity", Model: "claude-opus-4-6"},
+		"claude-sonnet-4.5":             {ProviderID: "kiro", Model: "claude-sonnet-4.5"},
+		"claude-haiku-4.5":              {ProviderID: "kiro", Model: "claude-haiku-4.5"},
+		"deepseek":                      {ProviderID: "kiro", Model: "deepseek-3.2"},
+	}
+	if target, ok := defaultAliases[model]; ok {
+		if _, hasProv := r.providers[target.ProviderID]; hasProv {
+			return target, true
+		}
+	}
+
+	// 5. Check if any active provider directly supports this model
+	ctx := context.Background()
+	for pid, p := range r.providers {
+		if mList, err := p.Models(ctx); err == nil {
+			for _, m := range mList {
+				if m.ID == model || strings.EqualFold(m.ID, model) {
+					return Target{ProviderID: pid, Model: m.ID}, true
+				}
+			}
+		}
+	}
+
 	return Target{}, false
 }
 

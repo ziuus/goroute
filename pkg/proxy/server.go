@@ -325,12 +325,14 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/v1/providers/{provider}/models", s.handleProviderDirectModels)
 	s.mux.Post("/api/v1/providers/{provider}/embeddings", s.handleProviderDirectEmbeddings)
 
-	// Legacy completions & OpenAI Responses API
+	// Legacy completions & OpenAI Responses API & Batches API
 	s.mux.Post("/v1/completions", s.handleCompletions)
 	s.mux.Post("/api/v1/completions", s.handleCompletions)
 	s.mux.Post("/v1/responses", s.handleResponses)
 	s.mux.Post("/api/v1/responses", s.handleResponses)
 	s.mux.Post("/api/v1/responses/*", s.handleResponses)
+	s.mux.Get("/v1/batches", s.handleListBatches)
+	s.mux.Post("/v1/batches", s.handleCreateBatch)
 
 	// CLI Tools full subsystem
 	s.registerCliToolsRoutes()
