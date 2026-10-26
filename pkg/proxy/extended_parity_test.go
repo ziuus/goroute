@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 
 func TestExtendedOmniRouteParitySubsystems(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := tmpDir + "/test_parity.db"
+	dbPath := filepath.Join(tmpDir, "test_parity.db")
 	store, err := storage.InitDB(dbPath)
 	if err != nil {
 		t.Fatalf("failed to init db: %v", err)

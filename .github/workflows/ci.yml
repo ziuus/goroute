@@ -26,8 +26,13 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: Run Tests
+      - name: Run Tests (Linux & macOS)
+        if: runner.os != 'Windows'
         run: go test -v -race ./...
+
+      - name: Run Tests (Windows)
+        if: runner.os == 'Windows'
+        run: go test -v ./...
 
       - name: Build Binary
         run: go build -v ./cmd/goroute

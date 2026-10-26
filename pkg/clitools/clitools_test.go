@@ -10,8 +10,13 @@ import (
 func TestGetAndSaveAndDisconnectToolConfig(t *testing.T) {
 	tempHome := t.TempDir()
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", origHome)
+	os.Setenv("USERPROFILE", tempHome)
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
 
 	// 1. Initial state for Claude Code: file doesn't exist yet
 	detail, err := GetToolConfigDetail("claude")
