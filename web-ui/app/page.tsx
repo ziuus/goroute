@@ -46,7 +46,15 @@ import {
   X,
   SlidersHorizontal,
   Download,
-  Power
+  Power,
+  FileCode,
+  Code2,
+  Unlink,
+  ArrowUpDown,
+  CheckCheck,
+  Save,
+  FileText,
+  History
 } from 'lucide-react';
 
 interface Account {
@@ -172,8 +180,22 @@ export default function GoRouteDashboard() {
   const [newAliasKey, setNewAliasKey] = useState('');
   const [newAliasTarget, setNewAliasTarget] = useState('');
 
-  // Agent Configuration Studio State
+  // Agent Fleet Tab Filters & Sorting
+  const [fleetStatusFilter, setFleetStatusFilter] = useState<'all' | 'connected' | 'detected' | 'not_installed'>('all');
+  const [fleetCategoryFilter, setFleetCategoryFilter] = useState<string>('all');
+  const [fleetSortBy, setFleetSortBy] = useState<'status' | 'name' | 'category'>('status');
+
+  // Agent Configuration & Inspect Studio State
   const [configuringAgent, setConfiguringAgent] = useState<any | null>(null);
+  const [inspectingAgent, setInspectingAgent] = useState<any | null>(null);
+  const [inspectModalTab, setInspectModalTab] = useState<'config' | 'wizard' | 'backups'>('config');
+  const [inspectConfigDetail, setInspectConfigDetail] = useState<any | null>(null);
+  const [inspectConfigContent, setInspectConfigContent] = useState<string>('');
+  const [inspectConfigLoading, setInspectConfigLoading] = useState<boolean>(false);
+  const [inspectConfigSaving, setInspectConfigSaving] = useState<boolean>(false);
+  const [inspectDisconnecting, setInspectDisconnecting] = useState<boolean>(false);
+  const [inspectRestoring, setInspectRestoring] = useState<boolean>(false);
+
   const [agentProvider, setAgentProvider] = useState<string>('auto');
   const [agentPrimaryModel, setAgentPrimaryModel] = useState<string>('claude-3-7-sonnet');
   const [agentSmallModel, setAgentSmallModel] = useState<string>('gemini-2.5-flash');
@@ -215,7 +237,18 @@ export default function GoRouteDashboard() {
   };
 
   const openAgentConfigModal = (agent: any) => {
-    setConfiguringAgent(agent);
+    openAgentInspectModal(agent, 'wizard');
+  };
+
+  const openAgentInspectModal = async (agent: any, preferredTab: 'config' | 'wizard' = 'config') => {
+    setInspectingAgent(agent);
+    setInspectModalTab(preferredTab);
+    setInspectConfigLoading(true);
+    setInspectConfigDetail(null);
+    setInspectConfigContent('');
+
+    // Pre-populate wizard options
+    setAgentProvider('auto');
     if (agent.id === 'opencode') {
       setAgentPrimaryModel('claude-3-7-sonnet');
       setAgentSmallModel('gemini-2.5-flash');
@@ -228,6 +261,96 @@ export default function GoRouteDashboard() {
       setAgentSmallModel('gemini-2.5-flash');
     }
     setAgentSelectedModels(getAvailableModelsAndCombos());
+
+    try {
+      const res = await fetch(`/api/cli-agents/${agent.id}/config`);
+      const data = await res.json();
+      if (data.status === 'ok' && data.config) {
+        setInspectConfigDetail(data.config);
+        setInspectConfigContent(data.config.content || '');
+        if (!data.config.exists && preferredTab === 'config') {
+          setInspectModalTab('wizard');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load agent config:', err);
+    } finally {
+      setInspectConfigLoading(false);
+    }
+  };
+
+  const handleSaveRawConfig = async (agentId: string) => {
+    setInspectConfigSaving(true);
+    try {
+      const res = await fetch(`/api/cli-agents/${agentId}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: inspectConfigContent }),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast(`Saved configuration for ${agentId}`);
+        setInspectConfigDetail(data.config);
+        fetchAllData();
+      } else {
+        showToast(data.error || 'Failed to save configuration');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error saving configuration');
+    } finally {
+      setInspectConfigSaving(false);
+    }
+  };
+
+  const handleDisconnectAgent = async (agentId: string) => {
+    if (!confirm(`Are you sure you want to disconnect ${agentId} from GoRoute? This will revert or clean GoRoute proxy settings from ${agentId}'s configuration file.`)) {
+      return;
+    }
+    setInspectDisconnecting(true);
+    try {
+      const res = await fetch(`/api/cli-agents/${agentId}/disconnect`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast(`Disconnected ${agentId} from GoRoute`);
+        if (data.config) {
+          setInspectConfigDetail(data.config);
+          setInspectConfigContent(data.config.content || '');
+        }
+        fetchAllData();
+      } else {
+        showToast(data.error || 'Failed to disconnect');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error disconnecting');
+    } finally {
+      setInspectDisconnecting(false);
+    }
+  };
+
+  const handleRestoreAgentBackup = async (agentId: string, backupId: string) => {
+    setInspectRestoring(true);
+    try {
+      const res = await fetch(`/api/cli-agents/${agentId}/restore/${backupId}`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast(`Restored backup ${backupId}`);
+        if (data.config) {
+          setInspectConfigDetail(data.config);
+          setInspectConfigContent(data.config.content || '');
+        }
+        fetchAllData();
+      } else {
+        showToast(data.error || 'Failed to restore backup');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error restoring backup');
+    } finally {
+      setInspectRestoring(false);
+    }
   };
 
   const getAgentConfigPreview = (agent: any) => {
@@ -598,17 +721,60 @@ wire_api = "responses"`;
     });
   }, [combos, cleanQuery]);
 
-  // Universal Filtered CLI Agents
+  const connectedFleetCount = useMemo(() => cliAgents.filter(a => a.configured).length, [cliAgents]);
+  const detectedFleetCount = useMemo(() => cliAgents.filter(a => a.detected && !a.configured).length, [cliAgents]);
+  const notInstalledFleetCount = useMemo(() => cliAgents.filter(a => !a.detected).length, [cliAgents]);
+
+  // Universal Filtered CLI Agents with Tab Filters & Sorting
   const filteredCliAgents = useMemo(() => {
-    if (!cleanQuery) return cliAgents;
-    return cliAgents.filter(a =>
-      a.name?.toLowerCase().includes(cleanQuery) ||
-      a.id?.toLowerCase().includes(cleanQuery) ||
-      a.category?.toLowerCase().includes(cleanQuery) ||
-      a.command?.toLowerCase().includes(cleanQuery) ||
-      a.settings_file?.toLowerCase().includes(cleanQuery)
-    );
-  }, [cliAgents, cleanQuery]);
+    let list = [...cliAgents];
+
+    // Status filter
+    if (fleetStatusFilter === 'connected') {
+      list = list.filter(a => a.configured);
+    } else if (fleetStatusFilter === 'detected') {
+      list = list.filter(a => a.detected && !a.configured);
+    } else if (fleetStatusFilter === 'not_installed') {
+      list = list.filter(a => !a.detected);
+    }
+
+    // Category filter
+    if (fleetCategoryFilter !== 'all') {
+      list = list.filter(a => (a.category || '').toLowerCase() === fleetCategoryFilter.toLowerCase());
+    }
+
+    // Universal text search
+    if (cleanQuery) {
+      list = list.filter(a =>
+        a.name?.toLowerCase().includes(cleanQuery) ||
+        a.id?.toLowerCase().includes(cleanQuery) ||
+        a.category?.toLowerCase().includes(cleanQuery) ||
+        a.default_command?.toLowerCase().includes(cleanQuery) ||
+        a.command?.toLowerCase().includes(cleanQuery) ||
+        a.settings_file?.toLowerCase().includes(cleanQuery) ||
+        a.description?.toLowerCase().includes(cleanQuery)
+      );
+    }
+
+    // Sorting
+    list.sort((a, b) => {
+      if (fleetSortBy === 'status') {
+        const aScore = a.configured ? 2 : (a.detected ? 1 : 0);
+        const bScore = b.configured ? 2 : (b.detected ? 1 : 0);
+        if (aScore !== bScore) return bScore - aScore;
+        return (a.name || '').localeCompare(b.name || '');
+      } else if (fleetSortBy === 'name') {
+        return (a.name || '').localeCompare(b.name || '');
+      } else if (fleetSortBy === 'category') {
+        const catCmp = (a.category || '').localeCompare(b.category || '');
+        if (catCmp !== 0) return catCmp;
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      return 0;
+    });
+
+    return list;
+  }, [cliAgents, cleanQuery, fleetStatusFilter, fleetCategoryFilter, fleetSortBy]);
 
   // Universal Filtered Traffic Inspector Logs
   const filteredTrafficLogs = useMemo(() => {
@@ -2065,56 +2231,194 @@ wire_api = "responses"`;
 
         {/* TAB: AGENT FLEET */}
         {activeTab === 'fleet' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="space-y-5">
+            {/* Header & Subtitle */}
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-base font-semibold tracking-tight">Active Host AI CLI Fleet</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Auto-detected terminal agents and IDE tools on this system</p>
+                <h2 className="text-base font-semibold tracking-tight">AI Agent Fleet & CLI Integrations</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Inspect config files on disk, fine-tune models, or disconnect agents in 1-click
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {connectedFleetCount} Active GoRoute {connectedFleetCount === 1 ? 'Target' : 'Targets'}
+                </span>
+                <button
+                  onClick={fetchAllData}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-slate-300 transition"
+                  title="Rescan host filesystem and CLI binaries"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                  <span>Rescan</span>
+                </button>
               </div>
             </div>
 
+            {/* Filter & Sorting Controls Toolbar */}
+            <div className="liquid-card p-3.5 flex flex-wrap items-center justify-between gap-3">
+              {/* Status Filter Chips */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setFleetStatusFilter('all')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    fleetStatusFilter === 'all'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  All ({cliAgents.length})
+                </button>
+                <button
+                  onClick={() => setFleetStatusFilter('connected')}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    fleetStatusFilter === 'connected'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <span>Connected ({connectedFleetCount})</span>
+                </button>
+                <button
+                  onClick={() => setFleetStatusFilter('detected')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    fleetStatusFilter === 'detected'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'text-sky-600 dark:text-sky-400 hover:bg-sky-500/10'
+                  }`}
+                >
+                  Detected ({detectedFleetCount})
+                </button>
+                <button
+                  onClick={() => setFleetStatusFilter('not_installed')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    fleetStatusFilter === 'not_installed'
+                      ? 'bg-slate-700 text-white shadow-xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  Not Installed ({notInstalledFleetCount})
+                </button>
+              </div>
+
+              {/* Category & Sorting Controls */}
+              <div className="flex items-center gap-2">
+                {/* Category selector */}
+                <div className="flex items-center gap-1.5">
+                  <Filter className="h-3.5 w-3.5 text-slate-400" />
+                  <select
+                    value={fleetCategoryFilter}
+                    onChange={(e) => setFleetCategoryFilter(e.target.value)}
+                    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="code">Code CLI & IDE</option>
+                    <option value="autonomous">Autonomous Agents</option>
+                    <option value="acp">ACP / Protocol</option>
+                  </select>
+                </div>
+
+                {/* Sort selector */}
+                <div className="flex items-center gap-1.5">
+                  <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                  <select
+                    value={fleetSortBy}
+                    onChange={(e) => setFleetSortBy(e.target.value as any)}
+                    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                  >
+                    <option value="status">Status (Connected First)</option>
+                    <option value="name">Name (A-Z)</option>
+                    <option value="category">Category</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid of Agent Cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredCliAgents.length === 0 && (
                 <div className="col-span-full liquid-card p-12 text-center">
                   <Search className="mx-auto h-8 w-8 text-slate-400" />
-                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No agents match &ldquo;{searchQuery}&rdquo;</h3>
-                  <p className="mt-1 text-xs text-slate-500">Search by agent name, command, settings path, or category.</p>
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">
+                    No agents match current filters
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Try changing your status filter or clearing search query.
+                  </p>
                   <button
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => {
+                      setFleetStatusFilter('all');
+                      setFleetCategoryFilter('all');
+                      setSearchQuery('');
+                    }}
                     className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
                   >
-                    Clear search filter
+                    Reset All Filters
                   </button>
                 </div>
               )}
 
               {filteredCliAgents.map(agent => (
-                <div key={agent.id} className="liquid-card flex flex-col justify-between p-5">
+                <div
+                  key={agent.id}
+                  className={`liquid-card flex flex-col justify-between p-5 transition ${
+                    agent.configured
+                      ? 'border-emerald-500/40 bg-emerald-500/5 dark:border-emerald-500/30 dark:bg-emerald-500/5'
+                      : ''
+                  }`}
+                >
                   <div>
+                    {/* Top row: Name & Status badge */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <Terminal className="h-5 w-5 text-rose-500" />
+                        <div className={`rounded-xl p-2 ${
+                          agent.configured
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-rose-500/10 text-rose-500'
+                        }`}>
+                          <Terminal className="h-4 w-4" />
+                        </div>
                         <div>
                           <h4 className="font-semibold text-slate-900 dark:text-white">{agent.name}</h4>
                           <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">{agent.id}</span>
                         </div>
                       </div>
-                      <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-medium ${
-                        agent.detected ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
-                      }`}>
-                        {agent.detected ? 'Detected' : 'Not installed'}
-                      </span>
+
+                      {agent.configured ? (
+                        <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Connected
+                        </span>
+                      ) : agent.detected ? (
+                        <span className="rounded-full bg-sky-500/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                          Detected
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-200/60 dark:bg-slate-800/60 px-2.5 py-0.5 font-mono text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                          Not installed
+                        </span>
+                      )}
                     </div>
 
                     <p className="mt-3 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                       {agent.description}
                     </p>
 
-                    <div className="mt-3 rounded-lg bg-slate-100/80 dark:bg-slate-800/60 p-2 font-mono text-[10px] text-slate-600 dark:text-slate-400 dark:bg-slate-800/60 dark:text-slate-400 dark:text-slate-500">
-                      {agent.settings_file}
-                    </div>
+                    {/* Settings file path badge (clickable to inspect) */}
+                    <button
+                      type="button"
+                      onClick={() => openAgentInspectModal(agent, 'config')}
+                      className="mt-3 w-full flex items-center justify-between rounded-lg bg-slate-100/80 dark:bg-slate-800/60 p-2 font-mono text-[10px] text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:text-rose-600 transition text-left"
+                      title="Click to view & edit raw configuration file"
+                    >
+                      <span className="truncate">{agent.settings_file}</span>
+                      <FileCode className="h-3 w-3 shrink-0 ml-1 text-slate-400" />
+                    </button>
                   </div>
 
+                  {/* Bottom action row */}
                   <div className="mt-4 flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3">
                     <a
                       href={agent.docs_url}
@@ -2126,29 +2430,51 @@ wire_api = "responses"`;
                       <ExternalLink className="h-3 w-3" />
                     </a>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => openAgentConfigModal(agent)}
-                        className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:text-rose-600 transition shadow-xs"
-                        title="Customize models, combos, and options"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5 text-rose-500" />
-                        <span>Customize</span>
-                      </button>
+                    <div className="flex items-center gap-1.5">
+                      {agent.configured ? (
+                        <>
+                          <button
+                            onClick={() => openAgentInspectModal(agent, 'config')}
+                            className="flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-emerald-400 hover:text-emerald-600 transition shadow-xs"
+                            title="Inspect & edit live configuration on host"
+                          >
+                            <FileCode className="h-3.5 w-3.5 text-emerald-500" />
+                            <span>Inspect & Edit</span>
+                          </button>
 
-                      <button
-                        onClick={() => handleConfigureCli(agent.id)}
-                        disabled={!agent.detected}
-                        className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                          agent.configured
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                            : agent.detected
-                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
-                            : 'cursor-not-allowed bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
-                        }`}
-                      >
-                        {agent.configured ? 'Connected' : 'Quick Connect'}
-                      </button>
+                          <button
+                            onClick={() => handleDisconnectAgent(agent.id)}
+                            className="flex items-center gap-1 rounded-xl border border-rose-200 dark:border-rose-900/40 bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition"
+                            title="Disconnect GoRoute and restore original settings"
+                          >
+                            <Unlink className="h-3.5 w-3.5" />
+                            <span>Disconnect</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => openAgentInspectModal(agent, 'config')}
+                            className="flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:text-rose-600 transition shadow-xs"
+                            title="Inspect configuration file path & details"
+                          >
+                            <FileCode className="h-3.5 w-3.5 text-slate-400" />
+                            <span>Inspect</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleConfigureCli(agent.id)}
+                            disabled={!agent.detected}
+                            className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                              agent.detected
+                                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                                : 'cursor-not-allowed bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            Quick Connect
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2901,236 +3227,463 @@ wire_api = "responses"`;
         </div>
       )}
 
-      {/* AGENT CONFIGURATION STUDIO MODAL */}
-      {configuringAgent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="liquid-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+      {/* AGENT INSPECTOR & CONFIGURATION STUDIO MODAL */}
+      {inspectingAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="liquid-card w-full max-w-3xl max-h-[92vh] flex flex-col p-6 shadow-2xl">
+            {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-rose-500/10 p-2 text-rose-600 dark:text-rose-400">
+                <div className={`rounded-xl p-2.5 ${
+                  inspectConfigDetail?.configured
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-rose-500/10 text-rose-500'
+                }`}>
                   <Terminal className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
-                    Configure {configuringAgent.name}
-                  </h3>
-                  <p className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                    Target: {configuringAgent.settings_file}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+                      {inspectingAgent.name}
+                    </h3>
+                    <span className="font-mono text-xs text-slate-400">({inspectingAgent.id})</span>
+                    {inspectConfigDetail?.configured ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Connected
+                      </span>
+                    ) : inspectConfigDetail?.detected ? (
+                      <span className="rounded-full bg-sky-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-600 dark:text-sky-400">
+                        Detected
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-slate-200/60 dark:bg-slate-800/60 px-2 py-0.5 font-mono text-[10px] text-slate-400">
+                        Not Installed
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="truncate max-w-md">{inspectConfigDetail?.settings_file || inspectingAgent.settings_file}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(inspectConfigDetail?.settings_file || inspectingAgent.settings_file);
+                        showToast('Copied settings path to clipboard!');
+                      }}
+                      className="text-slate-400 hover:text-rose-500 transition"
+                      title="Copy settings file path"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
+
               <button
-                onClick={() => setConfiguringAgent(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                onClick={() => setInspectingAgent(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="mt-5 space-y-5">
-              {/* Target Upstream Provider */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Target Upstream Provider
-                </label>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
-                  Explicitly bind to an upstream provider or use Auto to let GoRoute route models by affinity.
-                </p>
-                <select
-                  value={agentProvider}
-                  onChange={(e) => {
-                    const p = e.target.value;
-                    setAgentProvider(p);
-                    if (p === 'antigravity') {
-                      setAgentPrimaryModel('antigravity/claude-3-7-sonnet');
-                      setAgentSmallModel('antigravity/gemini-2.5-flash');
-                    } else if (p === 'kiro') {
-                      setAgentPrimaryModel('kiro/claude-3-7-sonnet');
-                      setAgentSmallModel('kiro/claude-haiku-4.5');
-                    } else if (p === 'codex') {
-                      setAgentPrimaryModel('codex/gpt-5.6-sol');
-                      setAgentSmallModel('codex/o3-mini');
-                    } else if (p === 'combo') {
-                      setAgentPrimaryModel('claude-models');
-                      setAgentSmallModel('gemini-2.5-flash');
-                    } else {
-                      setAgentPrimaryModel('claude-3-7-sonnet');
-                      setAgentSmallModel('gemini-2.5-flash');
-                    }
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <option value="auto">⚡ Auto (Smart Model Affinity Failover)</option>
-                  <option value="antigravity">🌐 Antigravity (Google Cloud Vertex AI)</option>
-                  <option value="kiro">⚡ Kiro (AWS Bedrock CodeWhisperer)</option>
-                  <option value="codex">🤖 Codex (OpenAI ChatGPT Core)</option>
-                  <option value="combo">🔀 Combos (Multi-Provider Failover Pools)</option>
-                </select>
-              </div>
+            {/* Modal Tab Switcher */}
+            <div className="mt-4 flex border-b border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => setInspectModalTab('config')}
+                className={`flex items-center gap-2 border-b-2 px-4 py-2 text-xs font-semibold transition ${
+                  inspectModalTab === 'config'
+                    ? 'border-rose-600 text-rose-600 dark:border-rose-500 dark:text-rose-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <FileCode className="h-4 w-4" />
+                <span>Live Config File & Editor</span>
+              </button>
 
-              {/* Primary Model */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Primary / Default Model or Combo
-                </label>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
-                  The main model this agent will invoke for reasoning, generation, and tool use.
-                </p>
-                <select
-                  value={agentPrimaryModel}
-                  onChange={(e) => setAgentPrimaryModel(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  <optgroup label="Active Failover Combos">
-                    {combos.map(c => (
-                      <option key={c.name} value={c.name}>
-                        ⚡ {c.name} ({c.targets?.length || 0} targets)
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Provider Qualified Models">
-                    {getAvailableModelsAndCombos().filter(m => m.includes('/') && !combos.some(c => c.name === m)).map(m => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Auto Affinity Models">
-                    {getAvailableModelsAndCombos().filter(m => !m.includes('/') && !combos.some(c => c.name === m)).map(m => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-              </div>
+              <button
+                onClick={() => setInspectModalTab('wizard')}
+                className={`flex items-center gap-2 border-b-2 px-4 py-2 text-xs font-semibold transition ${
+                  inspectModalTab === 'wizard'
+                    ? 'border-rose-600 text-rose-600 dark:border-rose-500 dark:text-rose-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span>Routing Wizard</span>
+              </button>
 
-              {/* Small / Fast Model */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Small / Fast Model (Sub-agents & Planning)
-                </label>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
-                  Used by multi-agent workflows (like OpenCode build/plan) for indexing and fast iterations.
-                </p>
-                <select
-                  value={agentSmallModel}
-                  onChange={(e) => setAgentSmallModel(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                >
-                  {getAvailableModelsAndCombos().map(m => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
+              <button
+                onClick={() => setInspectModalTab('backups')}
+                className={`flex items-center gap-2 border-b-2 px-4 py-2 text-xs font-semibold transition ${
+                  inspectModalTab === 'backups'
+                    ? 'border-rose-600 text-rose-600 dark:border-rose-500 dark:text-rose-400'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                <History className="h-4 w-4" />
+                <span>Backups ({inspectConfigDetail?.backups?.length || 0})</span>
+              </button>
+            </div>
 
-              {/* Allowed Models & Combos Checklist */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Models & Combos to Expose ({agentSelectedModels.length} selected)
-                  </label>
-                  <div className="flex gap-2 text-[11px]">
+            {/* Modal Body */}
+            <div className="mt-4 flex-1 overflow-y-auto pr-1">
+              {/* TAB 1: LIVE CONFIG & RAW EDITOR */}
+              {inspectModalTab === 'config' && (
+                <div className="space-y-4">
+                  {/* Status Banner */}
+                  <div className={`rounded-xl p-3 text-xs flex items-center justify-between ${
+                    inspectConfigDetail?.configured
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20'
+                      : 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${inspectConfigDetail?.configured ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                      <span>
+                        {inspectConfigDetail?.configured
+                          ? `Connected: ${inspectingAgent.name} is routing LLM queries to GoRoute (127.0.0.1:8128).`
+                          : `Default: ${inspectingAgent.name} is not currently routing through GoRoute.`}
+                      </span>
+                    </div>
+
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {inspectConfigDetail?.exists ? 'File on disk' : 'Not yet created'}
+                    </span>
+                  </div>
+
+                  {/* Editor Bar */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <span className="font-mono">
+                      {inspectConfigContent ? `${inspectConfigContent.split('\n').length} lines · ${inspectConfigContent.length} chars` : 'Empty file'}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setAgentSelectedModels(getAvailableModelsAndCombos())}
-                      className="text-rose-600 hover:underline dark:text-rose-400"
+                      onClick={() => openAgentInspectModal(inspectingAgent, 'config')}
+                      className="flex items-center gap-1 hover:text-rose-600 transition"
+                      title="Reload file from disk"
                     >
-                      Select All
+                      <RefreshCw className={`h-3 w-3 ${inspectConfigLoading ? 'animate-spin' : ''}`} />
+                      <span>Reload from disk</span>
                     </button>
-                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                  </div>
+
+                  {/* Raw Textarea Editor */}
+                  <div className="relative">
+                    <textarea
+                      value={inspectConfigContent}
+                      onChange={(e) => setInspectConfigContent(e.target.value)}
+                      placeholder="// Configuration file content..."
+                      rows={14}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs text-emerald-400 shadow-inner focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-black selection:bg-rose-500/30"
+                      spellCheck={false}
+                    />
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-3">
+                    <div>
+                      {inspectConfigDetail?.configured && (
+                        <button
+                          type="button"
+                          disabled={inspectDisconnecting}
+                          onClick={() => handleDisconnectAgent(inspectingAgent.id)}
+                          className="flex items-center gap-1.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-500/10 px-3.5 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition disabled:opacity-50"
+                        >
+                          <Unlink className="h-3.5 w-3.5" />
+                          <span>{inspectDisconnecting ? 'Disconnecting...' : 'Disconnect from GoRoute'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInspectingAgent(null)}
+                        className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={inspectConfigSaving}
+                        onClick={() => handleSaveRawConfig(inspectingAgent.id)}
+                        className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-500/20 transition disabled:opacity-50"
+                      >
+                        <Save className="h-4 w-4" />
+                        <span>{inspectConfigSaving ? 'Saving...' : 'Save & Write to Disk'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: ROUTING WIZARD */}
+              {inspectModalTab === 'wizard' && (
+                <div className="space-y-4">
+                  {/* Target Upstream Provider */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Target Upstream Provider
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                      Explicitly bind to an upstream provider or use Auto to let GoRoute route models by affinity.
+                    </p>
+                    <select
+                      value={agentProvider}
+                      onChange={(e) => {
+                        const p = e.target.value;
+                        setAgentProvider(p);
+                        if (p === 'antigravity') {
+                          setAgentPrimaryModel('antigravity/claude-3-7-sonnet');
+                          setAgentSmallModel('antigravity/gemini-2.5-flash');
+                        } else if (p === 'kiro') {
+                          setAgentPrimaryModel('kiro/claude-3-7-sonnet');
+                          setAgentSmallModel('kiro/claude-haiku-4.5');
+                        } else if (p === 'codex') {
+                          setAgentPrimaryModel('codex/gpt-5.6-sol');
+                          setAgentSmallModel('codex/o3-mini');
+                        } else if (p === 'combo') {
+                          setAgentPrimaryModel('claude-models');
+                          setAgentSmallModel('gemini-2.5-flash');
+                        } else {
+                          setAgentPrimaryModel('claude-3-7-sonnet');
+                          setAgentSmallModel('gemini-2.5-flash');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <option value="auto">⚡ Auto (Smart Model Affinity Failover)</option>
+                      <option value="antigravity">🌐 Antigravity (Google Cloud Vertex AI)</option>
+                      <option value="kiro">⚡ Kiro (AWS Bedrock CodeWhisperer)</option>
+                      <option value="codex">🤖 Codex (OpenAI ChatGPT Core)</option>
+                      <option value="combo">🔀 Combos (Multi-Provider Failover Pools)</option>
+                    </select>
+                  </div>
+
+                  {/* Primary Model */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Primary / Default Model or Combo
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                      The main model this agent will invoke for reasoning, generation, and tool use.
+                    </p>
+                    <select
+                      value={agentPrimaryModel}
+                      onChange={(e) => setAgentPrimaryModel(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <optgroup label="Active Failover Combos">
+                        {combos.map(c => (
+                          <option key={c.name} value={c.name}>
+                            ⚡ {c.name} ({c.targets?.length || 0} targets)
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Provider Qualified Models">
+                        {getAvailableModelsAndCombos().filter(m => m.includes('/') && !combos.some(c => c.name === m)).map(m => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Auto Affinity Models">
+                        {getAvailableModelsAndCombos().filter(m => !m.includes('/') && !combos.some(c => c.name === m)).map(m => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  {/* Small / Fast Model */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Small / Fast Model (Sub-agents & Planning)
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                      Used by multi-agent workflows (like OpenCode build/plan) for indexing and fast iterations.
+                    </p>
+                    <select
+                      value={agentSmallModel}
+                      onChange={(e) => setAgentSmallModel(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      {getAvailableModelsAndCombos().map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Allowed Models & Combos Checklist */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Models & Combos to Expose ({agentSelectedModels.length} selected)
+                      </label>
+                      <div className="flex gap-2 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setAgentSelectedModels(getAvailableModelsAndCombos())}
+                          className="text-rose-600 hover:underline dark:text-rose-400"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-700">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setAgentSelectedModels([agentPrimaryModel, agentSmallModel])}
+                          className="text-slate-500 hover:underline dark:text-slate-400"
+                        >
+                          Minimal
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 rounded-xl border border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/50">
+                      {getAvailableModelsAndCombos().map(m => {
+                        const selected = agentSelectedModels.includes(m);
+                        const isCombo = combos.some(c => c.name === m);
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              if (selected) {
+                                setAgentSelectedModels(agentSelectedModels.filter(x => x !== m));
+                              } else {
+                                setAgentSelectedModels([...agentSelectedModels, m]);
+                              }
+                            }}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono transition ${
+                              selected
+                                ? 'bg-rose-500 text-white font-medium shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            {isCombo && <span>⚡</span>}
+                            <span>{m}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Live Config Preview */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Generated Configuration Preview
+                    </label>
+                    <pre className="max-h-36 overflow-y-auto rounded-xl bg-slate-900 p-3 text-[11px] font-mono text-emerald-400 dark:bg-black">
+                      {getAgentConfigPreview(inspectingAgent)}
+                    </pre>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-4">
                     <button
                       type="button"
-                      onClick={() => setAgentSelectedModels([agentPrimaryModel, agentSmallModel])}
-                      className="text-slate-500 hover:underline dark:text-slate-400"
+                      onClick={() => {
+                        const provFlag = agentProvider !== 'auto' ? `-p ${agentProvider} ` : '';
+                        const cmd = `goroute setup ${inspectingAgent.id} ${provFlag}-m ${agentPrimaryModel} -s ${agentSmallModel} --models "${agentSelectedModels.join(',')}"`;
+                        navigator.clipboard.writeText(cmd);
+                        showToast('Copied CLI command to clipboard!');
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                     >
-                      Minimal
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>Copy Command</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInspectingAgent(null)}
+                        className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={agentApplying}
+                        onClick={() => {
+                          setAgentApplying(true);
+                          handleConfigureCli(inspectingAgent.id, {
+                            provider: agentProvider !== 'auto' ? agentProvider : '',
+                            model: agentPrimaryModel,
+                            small_model: agentSmallModel,
+                            models: agentSelectedModels,
+                            base_url: agentCustomUrl,
+                          }).then(() => {
+                            openAgentInspectModal(inspectingAgent, 'config');
+                          }).finally(() => setAgentApplying(false));
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-500/20 transition disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" />
+                        <span>{agentApplying ? 'Applying...' : 'Apply to Local Agent'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: BACKUPS */}
+              {inspectModalTab === 'backups' && (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    GoRoute automatically backs up config files before every modification or disconnect. You can restore any snapshot with 1-click.
+                  </p>
+
+                  {(!inspectConfigDetail?.backups || inspectConfigDetail.backups.length === 0) ? (
+                    <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-800 p-8 text-center">
+                      <History className="mx-auto h-8 w-8 text-slate-400" />
+                      <h4 className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-300">No Backups Yet</h4>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        A backup will be created automatically whenever you configure or edit this agent.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {inspectConfigDetail.backups.map((b: any) => (
+                        <div
+                          key={b.backupId}
+                          className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 p-3"
+                        >
+                          <div>
+                            <div className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                              {b.filename}
+                            </div>
+                            <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                              {new Date(b.createdAt).toLocaleString()} · {b.sizeBytes} bytes
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={inspectRestoring}
+                            onClick={() => handleRestoreAgentBackup(inspectingAgent.id, b.backupId)}
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:text-rose-600 transition shadow-xs disabled:opacity-50"
+                          >
+                            <RotateCcw className={`h-3 w-3 ${inspectRestoring ? 'animate-spin' : ''}`} />
+                            <span>Restore Snapshot</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end border-t border-slate-200 dark:border-slate-800 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setInspectingAgent(null)}
+                      className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                    >
+                      Close
                     </button>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 rounded-xl border border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/50">
-                  {getAvailableModelsAndCombos().map(m => {
-                    const selected = agentSelectedModels.includes(m);
-                    const isCombo = combos.some(c => c.name === m);
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => {
-                          if (selected) {
-                            setAgentSelectedModels(agentSelectedModels.filter(x => x !== m));
-                          } else {
-                            setAgentSelectedModels([...agentSelectedModels, m]);
-                          }
-                        }}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono transition ${
-                          selected
-                            ? 'bg-rose-500 text-white font-medium shadow-xs'
-                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                        }`}
-                      >
-                        {isCombo && <span>⚡</span>}
-                        <span>{m}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Live Config Preview */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Live Configuration Preview
-                </label>
-                <pre className="max-h-36 overflow-y-auto rounded-xl bg-slate-900 p-3 text-[11px] font-mono text-emerald-400 dark:bg-black">
-                  {getAgentConfigPreview(configuringAgent)}
-                </pre>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const provFlag = agentProvider !== 'auto' ? `-p ${agentProvider} ` : '';
-                    const cmd = `goroute setup ${configuringAgent.id} ${provFlag}-m ${agentPrimaryModel} -s ${agentSmallModel} --models "${agentSelectedModels.join(',')}"`;
-                    navigator.clipboard.writeText(cmd);
-                    showToast('Copied CLI command to clipboard!');
-                  }}
-                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  <span>Copy Command</span>
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfiguringAgent(null)}
-                    className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={agentApplying}
-                    onClick={() => {
-                      setAgentApplying(true);
-                      handleConfigureCli(configuringAgent.id, {
-                        provider: agentProvider !== 'auto' ? agentProvider : '',
-                        model: agentPrimaryModel,
-                        small_model: agentSmallModel,
-                        models: agentSelectedModels,
-                        base_url: agentCustomUrl,
-                      }).finally(() => setAgentApplying(false));
-                    }}
-                    className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-500/20 transition disabled:opacity-50"
-                  >
-                    <Check className="h-4 w-4" />
-                    <span>{agentApplying ? 'Applying...' : 'Apply to Local Agent'}</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

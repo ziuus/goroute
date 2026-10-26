@@ -226,6 +226,10 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/router/quota", s.handleSetRouterQuota)
 	s.mux.Get("/api/cli-agents", s.handleListCliAgents)
 	s.mux.Post("/api/cli-agents/{id}/configure", s.handleConfigureCliAgent)
+	s.mux.Get("/api/cli-agents/{id}/config", s.handleGetCliAgentConfig)
+	s.mux.Put("/api/cli-agents/{id}/config", s.handleSaveCliAgentConfig)
+	s.mux.Post("/api/cli-agents/{id}/disconnect", s.handleDisconnectCliAgent)
+	s.mux.Post("/api/cli-agents/{id}/restore/{backupId}", s.handleRestoreCliAgentBackup)
 	s.mux.Get("/api/topology", s.handleTopology)
 	s.mux.Get("/api/combos", s.handleListCombos)
 	s.mux.Post("/api/combos", s.handleSaveCombo)
@@ -4964,6 +4968,109 @@ func (s *Server) handleConfigureCliAgent(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
 		"message": string(out),
+	})
+}
+
+func (s *Server) handleGetCliAgentConfig(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "agent id is required", http.StatusBadRequest)
+		return
+	}
+	detail, err := clitools.GetToolConfigDetail(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"config": detail,
+	})
+}
+
+func (s *Server) handleSaveCliAgentConfig(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "agent id is required", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := clitools.SaveToolConfig(id, req.Content); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	detail, _ := clitools.GetToolConfigDetail(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Configuration saved successfully",
+		"config":  detail,
+	})
+}
+
+func (s *Server) handleDisconnectCliAgent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "agent id is required", http.StatusBadRequest)
+		return
+	}
+	if err := clitools.DisconnectTool(id); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	detail, _ := clitools.GetToolConfigDetail(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": fmt.Sprintf("Disconnected %s from GoRoute", id),
+		"config":  detail,
+	})
+}
+
+func (s *Server) handleRestoreCliAgentBackup(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	backupId := chi.URLParam(r, "backupId")
+	if id == "" || backupId == "" {
+		http.Error(w, "agent id and backup id are required", http.StatusBadRequest)
+		return
+	}
+	if err := clitools.RestoreBackup(id, backupId); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	detail, _ := clitools.GetToolConfigDetail(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": fmt.Sprintf("Restored backup %s", backupId),
+		"config":  detail,
 	})
 }
 

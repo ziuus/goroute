@@ -343,3 +343,231 @@ func ReadSettingsFile(toolId string) (map[string]interface{}, error) {
 	}
 	return res, nil
 }
+
+// ToolConfigDetail holds complete inspection information for a CLI agent.
+type ToolConfigDetail struct {
+	ToolID       string        `json:"tool_id"`
+	Name         string        `json:"name"`
+	Category     string        `json:"category"`
+	DocsURL      string        `json:"docs_url"`
+	SettingsFile string        `json:"settings_file"`
+	Exists       bool          `json:"exists"`
+	Configured   bool          `json:"configured"`
+	Detected     bool          `json:"detected"`
+	Runnable     bool          `json:"runnable"`
+	Version      string        `json:"version,omitempty"`
+	Content      string        `json:"content"`
+	IsJSON       bool          `json:"is_json"`
+	Backups      []BackupEntry `json:"backups"`
+}
+
+// GetToolConfigDetail retrieves the live configuration file, detection status, and backup history.
+func GetToolConfigDetail(toolId string) (*ToolConfigDetail, error) {
+	tool, exists := Registry[toolId]
+	if !exists {
+		return nil, fmt.Errorf("unknown tool: %s", toolId)
+	}
+
+	home, _ := os.UserHomeDir()
+	path := strings.Replace(tool.SettingsFile, "~", home, 1)
+
+	detail := &ToolConfigDetail{
+		ToolID:       toolId,
+		Name:         tool.Name,
+		Category:     tool.Category,
+		DocsURL:      tool.DocsURL,
+		SettingsFile: path,
+	}
+
+	// Probe binary
+	if tool.DefaultCommand != "" {
+		if p, err := exec.LookPath(tool.DefaultCommand); err == nil && p != "" {
+			detail.Detected = true
+			detail.Runnable = true
+			if tool.DefaultCommand != "antigravity" && tool.DefaultCommand != "cursor" && tool.DefaultCommand != "windsurf" && tool.DefaultCommand != "zed" {
+				ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+				cmd := exec.CommandContext(ctx, tool.DefaultCommand, "--version")
+				if out, err := cmd.Output(); err == nil {
+					v := strings.TrimSpace(string(out))
+					if len(v) > 40 {
+						v = v[:40]
+					}
+					detail.Version = v
+				}
+				cancel()
+			}
+		}
+	}
+
+	// Read file if exists
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+		detail.Exists = true
+		detail.Detected = true
+		if data, err := os.ReadFile(path); err == nil {
+			detail.Content = string(data)
+			if strings.Contains(detail.Content, "8128") || strings.Contains(detail.Content, "goroute") {
+				detail.Configured = true
+			}
+			var js interface{}
+			if json.Unmarshal(data, &js) == nil {
+				detail.IsJSON = true
+			}
+		}
+	}
+
+	// Backups
+	backups, _ := ListBackups(toolId)
+	if backups == nil {
+		backups = []BackupEntry{}
+	}
+	detail.Backups = backups
+
+	return detail, nil
+}
+
+// SaveToolConfig writes new raw content to the agent's settings file with an automatic backup.
+func SaveToolConfig(toolId string, content string) error {
+	tool, exists := Registry[toolId]
+	if !exists {
+		return fmt.Errorf("unknown tool: %s", toolId)
+	}
+
+	home, _ := os.UserHomeDir()
+	path := strings.Replace(tool.SettingsFile, "~", home, 1)
+
+	// Backup existing file if present
+	_, _ = BackupConfigFile(toolId, path)
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write settings file: %w", err)
+	}
+
+	// Update DB state
+	now := time.Now().Unix()
+	db := storage.GetDB()
+	if db != nil {
+		if strings.Contains(content, "8128") || strings.Contains(content, "goroute") {
+			_ = db.SaveCliToolState(toolId, now, path, "http://127.0.0.1:8128/v1")
+		}
+	}
+
+	return nil
+}
+
+// DisconnectTool removes GoRoute configurations from the agent's settings file and restores defaults.
+func DisconnectTool(toolId string) error {
+	tool, exists := Registry[toolId]
+	if !exists {
+		return fmt.Errorf("unknown tool: %s", toolId)
+	}
+
+	home, _ := os.UserHomeDir()
+	path := strings.Replace(tool.SettingsFile, "~", home, 1)
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Nothing to disconnect
+		db := storage.GetDB()
+		if db != nil {
+			_ = db.DeleteCliToolState(toolId)
+		}
+		return nil
+	}
+
+	// Always backup before modifying or disconnecting
+	_, _ = BackupConfigFile(toolId, path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "8128") && !strings.Contains(content, "goroute") {
+		// Not currently pointing to GoRoute
+		db := storage.GetDB()
+		if db != nil {
+			_ = db.DeleteCliToolState(toolId)
+		}
+		return nil
+	}
+
+	switch toolId {
+	case "claude":
+		var settings map[string]interface{}
+		if err := json.Unmarshal(data, &settings); err == nil && settings != nil {
+			if env, ok := settings["env"].(map[string]interface{}); ok {
+				delete(env, "ANTHROPIC_BASE_URL")
+				delete(env, "ANTHROPIC_AUTH_TOKEN")
+				delete(env, "ANTHROPIC_DEFAULT_SONNET_MODEL")
+				delete(env, "ANTHROPIC_DEFAULT_OPUS_MODEL")
+				delete(env, "ANTHROPIC_DEFAULT_HAIKU_MODEL")
+				if len(env) == 0 {
+					delete(settings, "env")
+				}
+			}
+			out, _ := json.MarshalIndent(settings, "", "  ")
+			_ = os.WriteFile(path, out, 0644)
+		}
+
+	case "opencode":
+		var settings map[string]interface{}
+		if err := json.Unmarshal(data, &settings); err == nil && settings != nil {
+			if prov, ok := settings["provider"].(map[string]interface{}); ok {
+				delete(prov, "goroute")
+				if len(prov) == 0 {
+					delete(settings, "provider")
+				}
+			}
+			if mod, ok := settings["model"].(string); ok && strings.HasPrefix(mod, "goroute/") {
+				delete(settings, "model")
+			}
+			if sm, ok := settings["small_model"].(string); ok && strings.HasPrefix(sm, "goroute/") {
+				delete(settings, "small_model")
+			}
+			out, _ := json.MarshalIndent(settings, "", "  ")
+			_ = os.WriteFile(path, out, 0644)
+		}
+
+	default:
+		// Generic JSON or line-based cleanup
+		var js map[string]interface{}
+		if err := json.Unmarshal(data, &js); err == nil && js != nil {
+			// Remove GoRoute keys
+			delete(js, "goroute")
+			// If file was solely generated for GoRoute proxying, rename to .bak or reset
+			if len(js) == 0 || (len(js) <= 3 && strings.Contains(content, "8128")) {
+				_ = os.Remove(path)
+			} else {
+				out, _ := json.MarshalIndent(js, "", "  ")
+				_ = os.WriteFile(path, out, 0644)
+			}
+		} else {
+			// Non-JSON file (e.g. TOML/YAML)
+			var cleanLines []string
+			for _, line := range strings.Split(content, "\n") {
+				if strings.Contains(line, "8128") || strings.Contains(line, "goroute") {
+					continue
+				}
+				cleanLines = append(cleanLines, line)
+			}
+			cleanContent := strings.TrimSpace(strings.Join(cleanLines, "\n"))
+			if cleanContent == "" {
+				_ = os.Remove(path)
+			} else {
+				_ = os.WriteFile(path, []byte(cleanContent+"\n"), 0644)
+			}
+		}
+	}
+
+	db := storage.GetDB()
+	if db != nil {
+		_ = db.DeleteCliToolState(toolId)
+	}
+
+	return nil
+}
+

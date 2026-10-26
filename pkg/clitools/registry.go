@@ -198,15 +198,6 @@ var Registry = map[string]CliTool{
 		DocsURL:        "https://zcode.z.ai",
 		SettingsFile:   "~/.zcode/config.json",
 	},
-	"antigravity": {
-		ID:             "antigravity",
-		Name:           "Antigravity",
-		Category:       "code",
-		Description:    "Google Antigravity IDE — MITM intercept and endpoint redirection",
-		DefaultCommand: "antigravity",
-		DocsURL:        "https://cloud.google.com/antigravity",
-		SettingsFile:   "~/.config/antigravity/mitm.json",
-	},
 	"copilot": {
 		ID:             "copilot",
 		Name:           "GitHub Copilot",
@@ -437,8 +428,6 @@ func ConfigureTool(id string) (string, error) {
 		return "Configured Windsurf (~/.codeium/windsurf/settings.json)", setupWindsurf(home)
 	case "zcode":
 		return "Configured ZCode (~/.zcode/config.json)", setupZCode(home)
-	case "antigravity":
-		return "Configured Antigravity MITM (~/.config/antigravity/mitm.json)", setupAntigravity(home)
 	case "copilot":
 		return "Configured Copilot (~/.config/github-copilot/hosts.json)", setupCopilot(home)
 	case "kiro":
@@ -744,19 +733,6 @@ func setupZCode(home string) error {
   "endpoint": "http://127.0.0.1:8128/v1",
   "apiKey": "goroute",
   "model": "claude-sonnet-4.5"
-}`
-	return os.WriteFile(cfgFile, []byte(content), 0644)
-}
-
-func setupAntigravity(home string) error {
-	dir := filepath.Join(home, ".config", "antigravity")
-	os.MkdirAll(dir, 0755)
-	cfgFile := filepath.Join(dir, "mitm.json")
-	content := `{
-  "enabled": true,
-  "listen": "127.0.0.1:8128",
-  "target": "antigravity",
-  "intercept_tls": false
 }`
 	return os.WriteFile(cfgFile, []byte(content), 0644)
 }
