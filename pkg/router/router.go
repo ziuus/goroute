@@ -210,14 +210,7 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 	}
 
 	if combo, ok := r.combos[model]; ok && len(combo.Targets) > 0 {
-		ordered := r.orderTargets(combo)
-		for _, t := range ordered {
-			if !resilience.GlobalCooldown.IsCooling(t.ProviderID, t.Model) {
-				return t, true
-			}
-		}
-		// If all are cooling down, return first target per strategy order
-		return ordered[0], true
+		return r.resolveComboTarget(combo, make(map[string]bool), 0)
 	}
 
 	parts := strings.SplitN(model, "/", 2)
@@ -269,6 +262,37 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 		}
 	}
 
+	return Target{}, false
+}
+
+func (r *Router) resolveComboTarget(combo *Combo, visited map[string]bool, depth int) (Target, bool) {
+	if depth > 8 || visited[combo.Name] {
+		return Target{}, false
+	}
+	visited[combo.Name] = true
+	defer delete(visited, combo.Name)
+
+	ordered := r.orderTargets(combo)
+	for _, t := range ordered {
+		// Check if target refers to another combo (nested / composite combo)
+		if t.ProviderID == "combo" || t.ProviderID == "" {
+			if sc, ok := r.combos[t.Model]; ok {
+				if sub, found := r.resolveComboTarget(sc, visited, depth+1); found {
+					return sub, true
+				}
+			}
+		} else if sc, ok := r.combos[t.Model]; ok {
+			if sub, found := r.resolveComboTarget(sc, visited, depth+1); found {
+				return sub, true
+			}
+		}
+		if !resilience.GlobalCooldown.IsCooling(t.ProviderID, t.Model) {
+			return t, true
+		}
+	}
+	if len(ordered) > 0 {
+		return ordered[0], true
+	}
 	return Target{}, false
 }
 
@@ -526,12 +550,49 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 }
 
 func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
+	return r.executeComboRecursive(ctx, combo, req, make(map[string]bool), 0)
+}
+
+func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *providers.ChatRequest, visited map[string]bool, depth int) (io.ReadCloser, bool, int, error) {
+	if depth > 8 || visited[combo.Name] {
+		return nil, false, http.StatusLoopDetected, fmt.Errorf("combo recursion depth exceeded or cycle detected for combo %q", combo.Name)
+	}
+	visited[combo.Name] = true
+	defer delete(visited, combo.Name)
+
 	targets := r.orderTargets(combo)
 
 	var lastErr error
 	var lastStatus int
 
 	for _, target := range targets {
+		// 1. Check if target refers to another combo (nested / composite combo)
+		var subCombo *Combo
+		r.mu.RLock()
+		if target.ProviderID == "combo" || target.ProviderID == "" {
+			subCombo = r.combos[target.Model]
+		} else if sc, ok := r.combos[target.Model]; ok {
+			subCombo = sc
+		} else if sc, ok := r.combos[target.ProviderID]; ok {
+			subCombo = sc
+		}
+		r.mu.RUnlock()
+
+		if subCombo != nil {
+			log.Printf("[GoRoute] Cascading into nested combo %q (depth %d)", subCombo.Name, depth+1)
+			body, isStream, statusCode, err := r.executeComboRecursive(ctx, subCombo, req, visited, depth+1)
+			if err == nil && statusCode >= 200 && statusCode < 400 {
+				return body, isStream, statusCode, nil
+			}
+			lastErr = err
+			if statusCode != 0 {
+				lastStatus = statusCode
+			}
+			log.Printf("[GoRoute] Nested combo %q failed or exhausted: %v (status %d), falling through to next target", subCombo.Name, err, statusCode)
+			continue
+		}
+
+		// 2. Direct provider target
 		r.mu.RLock()
 		prov, ok := r.providers[target.ProviderID]
 		r.mu.RUnlock()

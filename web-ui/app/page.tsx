@@ -3093,16 +3093,26 @@ wire_api = "responses"`;
                         Cascade Waterfall Order:
                       </div>
                       <div className="space-y-1.5">
-                        {targets.map((t: any, i: number) => (
-                          <div key={i} className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-400 dark:bg-slate-700 dark:text-neutral-300">
-                              {i + 1}
-                            </span>
-                            <span className="font-semibold text-slate-900 dark:text-white">{t.provider_id}</span>
-                            <span className="text-slate-400 dark:text-slate-500">/</span>
-                            <span>{t.model}</span>
-                          </div>
-                        ))}
+                        {targets.map((t: any, i: number) => {
+                          const isNestedCombo = t.provider_id === 'combo' || combos.some(c => c.name === t.model);
+                          return (
+                            <div key={i} className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                                {i + 1}
+                              </span>
+                              {isNestedCombo ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                                  <Layers className="h-2.5 w-2.5" />
+                                  COMBO
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-slate-900 dark:text-white">{t.provider_id}</span>
+                              )}
+                              <span className="text-slate-400 dark:text-slate-500">/</span>
+                              <span className={isNestedCombo ? "font-bold text-purple-700 dark:text-purple-300" : ""}>{t.model}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -4141,26 +4151,60 @@ wire_api = "responses"`;
                         value={step.provider}
                         onChange={e => {
                           const updated = [...comboSteps];
-                          updated[idx].provider = e.target.value;
+                          const newProv = e.target.value;
+                          updated[idx].provider = newProv;
+                          if (newProv === 'combo' && combos.length > 0) {
+                            const candidate = combos.find(c => c.name !== newComboName);
+                            if (candidate) updated[idx].model = candidate.name;
+                          }
                           setComboSteps(updated);
                         }}
                         className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
                       >
-                        {providers.map(p => (
-                          <option key={p.id} value={p.id}>{p.id}</option>
-                        ))}
+                        <optgroup label="Composite Combos">
+                          <option value="combo">combo (nested)</option>
+                        </optgroup>
+                        <optgroup label="Providers">
+                          {providers.map(p => (
+                            <option key={p.id} value={p.id}>{p.id}</option>
+                          ))}
+                        </optgroup>
                       </select>
-                      <input
-                        type="text"
-                        placeholder="model identifier"
-                        value={step.model}
-                        onChange={e => {
-                          const updated = [...comboSteps];
-                          updated[idx].model = e.target.value;
-                          setComboSteps(updated);
-                        }}
-                        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2 font-mono text-xs outline-none dark:border-slate-800 dark:bg-slate-800"
-                      />
+                      {step.provider === 'combo' && combos.length > 0 ? (
+                        <div className="flex-1 flex items-center gap-1">
+                          <select
+                            value={step.model}
+                            onChange={e => {
+                              const updated = [...comboSteps];
+                              updated[idx].model = e.target.value;
+                              setComboSteps(updated);
+                            }}
+                            className="w-full rounded-xl border border-purple-500/40 bg-purple-500/5 dark:bg-purple-950/20 p-2 font-mono text-xs font-semibold text-purple-700 dark:text-purple-300 outline-none"
+                          >
+                            {combos.filter(c => c.name !== newComboName).map(c => (
+                              <option key={c.name} value={c.name}>
+                                {c.name} ({c.strategy})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder={step.provider === 'combo' ? 'target combo name' : 'model identifier'}
+                          value={step.model}
+                          onChange={e => {
+                            const updated = [...comboSteps];
+                            updated[idx].model = e.target.value;
+                            setComboSteps(updated);
+                          }}
+                          className={`flex-1 rounded-xl border p-2 font-mono text-xs outline-none ${
+                            step.provider === 'combo'
+                              ? 'border-purple-500/40 bg-purple-500/5 dark:bg-purple-950/20 text-purple-700 dark:text-purple-300'
+                              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800'
+                          }`}
+                        />
+                      )}
                       {comboSteps.length > 1 && (
                         <button
                           onClick={() => setComboSteps(comboSteps.filter((_, i) => i !== idx))}

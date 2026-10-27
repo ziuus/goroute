@@ -198,3 +198,77 @@ func TestRouterEWMAAccuracy(t *testing.T) {
 		t.Fatalf("expected QuotaPercent 72.5, got %f", m3.QuotaPercent)
 	}
 }
+
+func TestNestedCombosCascade(t *testing.T) {
+	provA := &mockProvider{id: "prov-a", shouldFail: true, failCode: http.StatusTooManyRequests}
+	provB := &mockProvider{id: "prov-b", shouldFail: false}
+
+	r := NewRouter()
+	r.RegisterProvider(provA)
+	r.RegisterProvider(provB)
+
+	// Sub-combo 1: fast-tier (fails)
+	r.RegisterCombo("fast-tier", "failover", []Target{
+		{ProviderID: "prov-a", Model: "claude-haiku"},
+	})
+
+	// Sub-combo 2: heavy-tier (succeeds)
+	r.RegisterCombo("heavy-tier", "failover", []Target{
+		{ProviderID: "prov-b", Model: "claude-sonnet"},
+	})
+
+	// Master combo referencing both sub-combos
+	r.RegisterCombo("master-resilient", "failover", []Target{
+		{ProviderID: "combo", Model: "fast-tier"},
+		{ProviderID: "combo", Model: "heavy-tier"},
+	})
+
+	req := &providers.ChatRequest{
+		Model: "master-resilient",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "hello"},
+		},
+	}
+
+	body, _, status, err := r.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer body.Close()
+
+	if status != http.StatusOK {
+		t.Errorf("expected status 200, got %d", status)
+	}
+
+	resp, _ := io.ReadAll(body)
+	if !strings.Contains(string(resp), "success from prov-b") {
+		t.Errorf("expected cascade into heavy-tier prov-b, got: %s", string(resp))
+	}
+}
+
+func TestNestedCombosCycleDetection(t *testing.T) {
+	r := NewRouter()
+
+	// Mutual recursive cycle: combo-a -> combo-b -> combo-a
+	r.RegisterCombo("combo-a", "failover", []Target{
+		{ProviderID: "combo", Model: "combo-b"},
+	})
+	r.RegisterCombo("combo-b", "failover", []Target{
+		{ProviderID: "combo", Model: "combo-a"},
+	})
+
+	req := &providers.ChatRequest{
+		Model: "combo-a",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "hello"},
+		},
+	}
+
+	_, _, status, err := r.Execute(context.Background(), req)
+	if err == nil {
+		t.Fatalf("expected loop error, got nil")
+	}
+	if status != http.StatusLoopDetected && status != http.StatusServiceUnavailable {
+		t.Errorf("expected 508 Loop Detected, got %d", status)
+	}
+}
