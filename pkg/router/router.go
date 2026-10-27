@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -364,19 +365,39 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 	}
 
 	// 4. Claude Code discovery mirroring (OmniRoute parity: ccDiscoveryAlias)
-	// Claude Code CLI only surfaces models with "claude/" or "anthropic/" prefix.
-	// Mirror non-Claude models under claude/<id> so Claude Code can see and use them.
+	// Claude Code CLI only surfaces models with "claude" or "anthropic" prefix.
+	// By default, mirror ONLY user-configured combos (e.g. claude/frontier, claude/deepseek, claude/gpt)
+	// so the Claude Code model picker is clean and focused instead of listing hundreds of upstream models.
+	// Raw provider models are only mirrored if EXPOSE_CC_DISCOVERY_ALIASES=true.
+	exposeAll := os.Getenv("EXPOSE_CC_DISCOVERY_ALIASES") == "true" || os.Getenv("EXPOSE_CC_DISCOVERY_ALIASES") == "1"
+
 	var ccMirrors []providers.ModelInfo
-	for _, m := range models {
-		if !strings.HasPrefix(m.ID, "claude/") && !strings.HasPrefix(m.ID, "anthropic/") {
-			mirrorID := "claude/" + m.ID
+	for name := range r.combos {
+		if !strings.HasPrefix(name, "claude") && !strings.HasPrefix(name, "anthropic") {
+			mirrorID := "claude/" + name
 			if !seen[mirrorID] {
 				seen[mirrorID] = true
 				ccMirrors = append(ccMirrors, providers.ModelInfo{
 					ID:      mirrorID,
 					Object:  "model",
-					OwnedBy: "goroute-cc",
+					OwnedBy: "goroute-combo",
 				})
+			}
+		}
+	}
+
+	if exposeAll {
+		for _, m := range models {
+			if !strings.HasPrefix(m.ID, "claude/") && !strings.HasPrefix(m.ID, "anthropic/") {
+				mirrorID := "claude/" + m.ID
+				if !seen[mirrorID] {
+					seen[mirrorID] = true
+					ccMirrors = append(ccMirrors, providers.ModelInfo{
+						ID:      mirrorID,
+						Object:  "model",
+						OwnedBy: "goroute-cc",
+					})
+				}
 			}
 		}
 	}
