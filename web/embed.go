@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var content embed.FS
 
 func Handler() http.Handler {

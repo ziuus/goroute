@@ -133,6 +133,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/logs/stream", s.handleLogsStream)
 	s.mux.Post("/api/logs/{id}/replay", s.handleReplayLog)
 	s.mux.Post("/api/reload", s.handleReload)
+	s.mux.Post("/api/restart", s.handleRestart)
+	s.mux.Post("/api/shutdown", s.handleShutdown)
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)
 	s.mux.Post("/api/providers/{id}/accounts", s.handleAddAccount)
@@ -3974,6 +3976,35 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"message": "configuration reloaded successfully",
 	})
+}
+
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if err := s.Reload(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "goroute reloaded and refreshed",
+	})
+}
+
+func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "shutdown initiated",
+	})
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		os.Exit(0)
+	}()
 }
 
 func (s *Server) handleModelCooldowns(w http.ResponseWriter, r *http.Request) {

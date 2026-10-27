@@ -38,6 +38,7 @@ import {
   Check,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   Filter,
   Copy,
   RotateCcw,
@@ -203,6 +204,51 @@ export default function GoRouteDashboard() {
   const [privacyMasks, setPrivacyMasks] = useState<Record<string, boolean>>({});
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, boolean>>({});
   const [reorderMode, setReorderMode] = useState(false);
+
+  // OmniRoute-Parity Collapsible Sidebar & System Controls
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [showRestartModal, setShowRestartModal] = useState(false);
+  const [showShutdownModal, setShowShutdownModal] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [isShuttingDown, setIsShuttingDown] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('goroute-sidebar-collapsed');
+      if (stored !== null) setSidebarCollapsed(stored === 'true');
+    } catch {}
+  }, []);
+
+  const toggleSidebarCollapse = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem('goroute-sidebar-collapsed', String(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleSystemRestart = async () => {
+    setIsRestarting(true);
+    try {
+      await fetch('/api/restart', { method: 'POST' });
+      showToast('GoRoute restart initiated. Reloading...');
+      setTimeout(() => window.location.reload(), 2500);
+    } catch {
+      showToast('Restarting GoRoute...');
+      setTimeout(() => window.location.reload(), 2500);
+    }
+  };
+
+  const handleSystemShutdown = async () => {
+    setIsShuttingDown(true);
+    try {
+      await fetch('/api/shutdown', { method: 'POST' });
+      showToast('GoRoute daemon shutdown complete');
+    } catch {
+      showToast('GoRoute daemon terminated');
+    }
+  };
 
   // Batch Test Results Modal State
   const [batchTestModalData, setBatchTestModalData] = useState<{
@@ -1067,33 +1113,479 @@ wire_api = "responses"`;
         </div>
       )}
 
-      {/* Top Header Navigation */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-6 py-3.5 backdrop-blur-md dark:border-slate-800 dark:bg-[#0B0F17]/95">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-600 text-white shadow-xs">
-              <Zap className="h-4 w-4 fill-white" />
+      {/* OmniRoute Two-Column Layout Shell */}
+      <div className="flex min-h-screen">
+        {/* Left Collapsible Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0D1117] transition-all duration-300 ${
+          sidebarCollapsed ? 'w-16' : 'w-64'
+        }`}>
+          {/* Header */}
+          <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-800">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white shadow-xs">
+                <Zap className="h-4 w-4 fill-white" />
+              </div>
+              {!sidebarCollapsed && (
+                <div className="flex flex-col leading-tight">
+                  <span className="font-bold tracking-tight text-slate-900 dark:text-white uppercase text-xs">GoRoute</span>
+                  <span className="font-mono text-[10px] text-slate-400">v0.6.1</span>
+                </div>
+              )}
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-white uppercase">GoRoute</span>
-              <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">v0.6.1</span>
+            <button
+              type="button"
+              onClick={toggleSidebarCollapse}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              <ChevronLeft className={`h-4 w-4 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
+
+          {/* Quick Search in Sidebar */}
+          {!sidebarCollapsed && (
+            <div className="px-3 pt-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search navigation..."
+                  value={sidebarSearch}
+                  onChange={(e) => setSidebarSearch(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50/70 pl-8 pr-2 py-1 text-xs text-slate-900 placeholder:text-slate-400 focus:border-rose-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-900/60 dark:text-white dark:placeholder:text-slate-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Navigation Groups */}
+          <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4 custom-scrollbar">
+            {/* HOME */}
+            <div>
+              {!sidebarCollapsed && (
+                <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Home
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
+                className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                  activeTab === 'overview' && !selectedProviderStudio
+                    ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                title="Home Dashboard"
+              >
+                <Activity className="h-4 w-4 shrink-0 text-sky-500" />
+                {!sidebarCollapsed && <span>Dashboard Overview</span>}
+              </button>
+            </div>
+
+            {/* PINNED */}
+            <div>
+              {!sidebarCollapsed && (
+                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <span>Pinned</span>
+                  <Flame className="h-2.5 w-2.5 text-rose-500" />
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('providers'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'providers' && !selectedProviderStudio
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Providers"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Server className="h-4 w-4 shrink-0 text-indigo-500" />
+                    {!sidebarCollapsed && <span>Providers</span>}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{providers.length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('quota'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'quota'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Provider Quota"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Flame className="h-4 w-4 shrink-0 text-amber-500" />
+                    {!sidebarCollapsed && <span>Provider Quota</span>}
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* OMNIPROXY */}
+            <div>
+              {!sidebarCollapsed && (
+                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <span>OmniProxy</span>
+                  <Globe className="h-2.5 w-2.5 text-cyan-500" />
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    sidebarCollapsed ? 'justify-center' : ''
+                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
+                  title="Endpoints"
+                >
+                  <Radio className="h-4 w-4 shrink-0 text-sky-400" />
+                  {!sidebarCollapsed && (
+                    <div className="flex flex-col text-left">
+                      <span>Endpoints</span>
+                      <span className="text-[10px] font-normal text-slate-400">/v1/chat, /v1/messages</span>
+                    </div>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('settings'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    sidebarCollapsed ? 'justify-center' : ''
+                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
+                  title="API Keys"
+                >
+                  <Key className="h-4 w-4 shrink-0 text-amber-400" />
+                  {!sidebarCollapsed && (
+                    <div className="flex flex-col text-left">
+                      <span>API Keys</span>
+                      <span className="text-[10px] font-normal text-slate-400">Virtual keys & quotas</span>
+                    </div>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('providers'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'providers' && !selectedProviderStudio
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Providers"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Server className="h-4 w-4 shrink-0 text-indigo-400" />
+                    {!sidebarCollapsed && (
+                      <div className="flex flex-col text-left">
+                        <span>Providers</span>
+                        <span className="text-[10px] font-normal text-slate-400">150+ Upstreams</span>
+                      </div>
+                    )}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{providers.length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('combos'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'combos'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Combos"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Layers className="h-4 w-4 shrink-0 text-purple-400" />
+                    {!sidebarCollapsed && (
+                      <div className="flex flex-col text-left">
+                        <span>Combos</span>
+                        <span className="text-[10px] font-normal text-slate-400">Failover cascades</span>
+                      </div>
+                    )}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{combos.length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('combos'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    sidebarCollapsed ? 'justify-center' : ''
+                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
+                  title="Combo Studio"
+                >
+                  <Sliders className="h-4 w-4 shrink-0 text-fuchsia-400" />
+                  {!sidebarCollapsed && (
+                    <div className="flex flex-col text-left">
+                      <span>Combo Studio</span>
+                      <span className="text-[10px] font-normal text-slate-400">Live routing cascade</span>
+                    </div>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* COMPRESSION CONTEXT */}
+            <div>
+              {!sidebarCollapsed && (
+                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <span>Compression Context</span>
+                  <Filter className="h-2.5 w-2.5 text-teal-500" />
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('settings'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    sidebarCollapsed ? 'justify-center' : ''
+                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
+                  title="Compression Settings"
+                >
+                  <Settings className="h-4 w-4 shrink-0 text-teal-400" />
+                  {!sidebarCollapsed && (
+                    <div className="flex flex-col text-left">
+                      <span>Compression...</span>
+                      <span className="text-[10px] font-normal text-slate-400">Global defaults</span>
+                    </div>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    sidebarCollapsed ? 'justify-center' : ''
+                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
+                  title="Engine Combos"
+                >
+                  <Filter className="h-4 w-4 shrink-0 text-emerald-400" />
+                  {!sidebarCollapsed && (
+                    <div className="flex flex-col text-left">
+                      <span>Engine Comb...</span>
+                      <span className="text-[10px] font-normal text-slate-400">60 RTK Filters</span>
+                    </div>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* TOOLS & FLEET */}
+            <div>
+              {!sidebarCollapsed && (
+                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <span>Tools & Fleet</span>
+                  <Terminal className="h-2.5 w-2.5 text-yellow-500" />
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('fleet'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'fleet'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Conductor Fleet"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Terminal className="h-4 w-4 shrink-0 text-yellow-400" />
+                    {!sidebarCollapsed && <span>Conductor Fleet</span>}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{cliAgents.filter(a => a.detected).length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('traffic'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'traffic'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Traffic Inspector"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Clock className="h-4 w-4 shrink-0 text-slate-400" />
+                    {!sidebarCollapsed && <span>Traffic Inspector</span>}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{trafficLogs.length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('playground'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'playground'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Playground"
+                >
+                  <Play className="h-4 w-4 shrink-0 text-rose-400" />
+                  {!sidebarCollapsed && <span>Playground</span>}
+                </button>
+              </div>
+            </div>
+
+            {/* MONITORING & RESILIENCE */}
+            <div>
+              {!sidebarCollapsed && (
+                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  <span>Resilience & Radar</span>
+                  <Cpu className="h-2.5 w-2.5 text-blue-500" />
+                </div>
+              )}
+              <div className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('catalog'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'catalog'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Radar Catalog"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Cpu className="h-4 w-4 shrink-0 text-blue-400" />
+                    {!sidebarCollapsed && <span>Radar Catalog</span>}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{catalog.length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('settings'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'settings'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Settings"
+                >
+                  <Settings className="h-4 w-4 shrink-0 text-slate-400" />
+                  {!sidebarCollapsed && <span>Settings</span>}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Minimal Live Status */}
-            <div className="hidden items-center gap-2.5 rounded-full border border-slate-200 bg-slate-100/70 px-3 py-1 font-mono text-[11px] text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 md:flex">
-              <span className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="font-semibold text-slate-900 dark:text-white">:8128</span>
-              </span>
-              <span>•</span>
-              <span><strong>{avgLatency}ms</strong> routing</span>
-              <span>•</span>
-              <span><strong>{gatewayMem}</strong> RSS</span>
+          {/* Footer */}
+          <div className="mt-auto border-t border-slate-200 p-3 dark:border-slate-800">
+            {!sidebarCollapsed ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Sync active · SQLite WAL</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowRestartModal(true)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition shadow-2xs"
+                  >
+                    <RotateCcw className="h-3 w-3 text-amber-500" />
+                    <span>Restart</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowShutdownModal(true)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-slate-800 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-950/30 transition shadow-2xs"
+                  >
+                    <Power className="h-3 w-3" />
+                    <span>Shutdown</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRestartModal(true)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  title="Restart daemon"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowShutdownModal(true)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                  title="Shutdown daemon"
+                >
+                  <Power className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* Right Main Content Column */}
+        <div className={`flex flex-col min-h-screen flex-1 transition-all duration-300 ${
+          sidebarCollapsed ? 'pl-16' : 'pl-64'
+        }`}>
+          {/* Header */}
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur-md dark:border-slate-800 dark:bg-[#0B0F17]/95">
+            <div className="flex items-center gap-2 font-mono text-xs text-slate-500 dark:text-slate-400">
+              <button
+                type="button"
+                onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
+                className="hover:text-slate-900 dark:hover:text-white transition"
+              >
+                Dashboard
+              </button>
+              <span>›</span>
+              <button
+                type="button"
+                onClick={() => { setSelectedProviderStudio(null); }}
+                className="hover:text-slate-900 dark:hover:text-white transition uppercase font-semibold text-slate-900 dark:text-white"
+              >
+                {activeTab}
+              </button>
+              {selectedProviderStudio && (
+                <>
+                  <span>›</span>
+                  <span className="font-semibold text-rose-600 dark:text-rose-400 uppercase">
+                    {selectedProviderStudio === 'antigravity' ? 'Agy' : selectedProviderStudio}
+                  </span>
+                </>
+              )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {/* Minimal Live Status */}
+              <div className="hidden items-center gap-2.5 rounded-full border border-slate-200 bg-slate-100/70 px-3 py-1 font-mono text-[11px] text-slate-700 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300 md:flex">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-semibold text-slate-900 dark:text-white">:8128</span>
+                </span>
+                <span>•</span>
+                <span><strong>{avgLatency}ms</strong> routing</span>
+                <span>•</span>
+                <span><strong>{gatewayMem}</strong> RSS</span>
+              </div>
+
               <button
                 onClick={toggleDarkMode}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -1124,81 +1616,10 @@ wire_api = "responses"`;
                 <span className="font-mono text-xs">↗</span>
               </button>
             </div>
-          </div>
-        </div>
-      </header>
+          </header>
 
-      {/* Main Content Shell */}
-      <main className="mx-auto max-w-7xl px-6 py-8">
-        
-        {/* Navigation Bar Tabs */}
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-2 dark:border-slate-800">
-          <nav className="flex flex-wrap items-center gap-1">
-            {[
-              { id: 'overview', num: '01', label: 'Overview' },
-              { id: 'providers', num: '02', label: 'Providers', count: providers.length },
-              { id: 'combos', num: '03', label: 'Combos Studio', count: combos.length },
-              { id: 'catalog', num: '04', label: 'Radar Catalog', count: catalog.length },
-              { id: 'quota', num: '05', label: 'Rolling Quota' },
-              { id: 'traffic', num: '06', label: 'Inspector', count: trafficLogs.length },
-              { id: 'fleet', num: '07', label: 'Agent Fleet', count: cliAgents.filter(a => a.detected).length },
-              { id: 'playground', num: '08', label: 'Playground' },
-              { id: 'settings', num: '09', label: 'Settings' },
-            ].map(tab => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`group relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs transition-all duration-200 hover:-translate-y-0.5 active:scale-95 ${
-                    isActive
-                      ? 'font-bold text-slate-900 dark:text-white bg-slate-100/80 dark:bg-slate-800/80'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50'
-                  }`}
-                >
-                  <span className={`font-mono text-[10px] ${isActive ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-500 dark:text-slate-500'}`}>
-                    {tab.num}
-                  </span>
-                  <span>{tab.label}</span>
-                  {tab.count !== undefined && (
-                    <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                      ({tab.count})
-                    </span>
-                  )}
-                  {isActive && (
-                    <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-rose-600 dark:bg-rose-500" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="relative min-w-[260px] sm:min-w-[320px]">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-            <input
-              type="text"
-              placeholder="Search models, providers, agents, combos..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-24 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-rose-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-500"
-            />
-            {cleanQuery && (
-              <div className="absolute right-2 top-1.5 flex items-center gap-1.5">
-                <span className="rounded bg-rose-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-rose-600 dark:text-rose-400">
-                  {totalSearchResults} {totalSearchResults === 1 ? 'match' : 'matches'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="rounded p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                  title="Clear search"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+          {/* Main Content Area */}
+          <main className="flex-1 p-6 sm:p-8 max-w-[1920px] w-full mx-auto space-y-6">
 
         {/* TAB: OVERVIEW */}
         {activeTab === 'overview' && (
@@ -3382,6 +3803,8 @@ wire_api = "responses"`;
           </div>
         )}
       </main>
+        </div>
+      </div>
 
       {/* COMPREHENSIVE ADD PROVIDER DIRECTORY MODAL */}
       {showAddModal && (
@@ -4732,6 +5155,74 @@ wire_api = "responses"`;
                   Done
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* System Restart Modal */}
+      {showRestartModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
+                <RotateCcw className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Restart GoRoute Daemon?</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">This will reload all configurations, provider pools, and reconnect memory.</p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowRestartModal(false)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isRestarting}
+                onClick={handleSystemRestart}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-amber-600 transition disabled:opacity-50"
+              >
+                {isRestarting ? 'Restarting...' : 'Restart Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* System Shutdown Modal */}
+      {showShutdownModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500">
+                <Power className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Shutdown GoRoute Daemon?</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">The gateway process will terminate immediately. CLI agents will lose connection.</p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowShutdownModal(false)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isShuttingDown}
+                onClick={handleSystemShutdown}
+                className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-rose-700 transition disabled:opacity-50"
+              >
+                {isShuttingDown ? 'Shutting down...' : 'Shutdown Process'}
+              </button>
             </div>
           </div>
         </div>
