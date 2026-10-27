@@ -563,10 +563,11 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			return nil, false, 0, fmt.Errorf("create kiro request: %w", err)
 		}
 
-		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Content-Type", "application/x-amz-json-1.0")
 		httpReq.Header.Set("Accept", "application/vnd.amazon.eventstream")
 		httpReq.Header.Set("X-Amz-Target", "AmazonCodeWhispererStreamingService.GenerateAssistantResponse")
 		httpReq.Header.Set("Authorization", "Bearer "+token)
+		httpReq.Header.Set("x-amzn-codewhisperer-optout", "true")
 		if acc.APIKey != "" {
 			httpReq.Header.Set("tokentype", "API_KEY")
 		}
