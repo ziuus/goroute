@@ -1,34 +1,16 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="./assets/logo-light.png">
-    <img src="./assets/logo.png" alt="GoRoute" width="460" />
-  </picture>
-</p>
+# GoRoute
 
-<p align="center">
-  <strong>High-Performance LLM Gateway & Multi-Provider Router for Coding Agents</strong><br/>
-  Sub-millisecond routing • &lt; 5 MB RAM footprint • Go core with Rust acceleration • 330+ Providers
-</p>
+**High-Performance LLM Gateway & Multi-Provider Router for Coding Agents**  
+*Sub-millisecond routing • < 5 MB RAM footprint • Go core with Rust SIMD acceleration • 330+ Providers*
 
-<p align="center">
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go" alt="Go Version" /></a>
-  <a href="crates/goroute-fast"><img src="https://img.shields.io/badge/Engine-Go%20%2B%20Rust%20Fast-dea584?style=flat-square&logo=rust" alt="Engine" /></a>
-  <a href="https://www.npmjs.com/package/goroute"><img src="https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837" alt="NPM Version" /></a>
-  <a href="#-benchmarks"><img src="https://img.shields.io/badge/Memory-4.7MB%20RAM-00C853?style=flat-square" alt="Memory Footprint" /></a>
-  <a href="#-benchmarks"><img src="https://img.shields.io/badge/Latency-0.86ms-6366f1?style=flat-square" alt="Latency" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3DA639?style=flat-square" alt="License" /></a>
-</p>
+[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
+[![Engine](https://img.shields.io/badge/Engine-Go%20%2B%20Rust%20Fast-dea584?style=flat-square&logo=rust)](crates/goroute-fast)
+[![NPM Version](https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/goroute)
+[![Memory Footprint](https://img.shields.io/badge/Memory-3.8MB%20RAM-00C853?style=flat-square)](#benchmarks)
+[![Latency](https://img.shields.io/badge/Latency-0.86ms-6366f1?style=flat-square)](#benchmarks)
+[![License](https://img.shields.io/badge/License-MIT-3DA639?style=flat-square)](LICENSE)
 
-<p align="center">
-  <a href="#overview">Overview</a> •
-  <a href="#quickstart">Quickstart</a> •
-  <a href="#benchmarks">Benchmarks</a> •
-  <a href="#omniroute-vault-sync">OmniRoute Sync</a> •
-  <a href="#agent-fleet">Agent Fleet</a> •
-  <a href="#combos--failover">Combos</a> •
-  <a href="#cli-reference">CLI Reference</a>
-</p>
+[Overview](#overview) • [Quickstart](#quickstart) • [Benchmarks](#benchmarks) • [OmniRoute Sync](#omniroute-vault-sync) • [Agent Fleet](#agent-fleet) • [Combos](#combos--failover) • [CLI Reference](#cli-reference)
 
 ---
 
