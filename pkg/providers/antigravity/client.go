@@ -547,7 +547,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 
 		// Normalize requested model to live upstream model
-		upstreamModel := req.Model
+		upstreamModel := strings.TrimPrefix(req.Model, "antigravity/")
+		upstreamModel = strings.TrimPrefix(upstreamModel, "claude/")
 		switch strings.ToLower(upstreamModel) {
 		case "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-sonnet", "claude", "claude-sonnet-4-6":
 			upstreamModel = "claude-sonnet-4-6"
