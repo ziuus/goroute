@@ -10,14 +10,32 @@ bin/*
 crates/**/target/
 target/
 
+# Web UI build outputs and dependencies
+web-ui/node_modules/
+web-ui/.next/
+web-ui/out/
+web-ui/bun.lock
+web-ui/*.tsbuildinfo
+
 # Test and coverage artifacts
 *.out
 *.test
 coverage.txt
+*.log
+
+# Databases & local state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+goroute.db*
 
 # Local credentials, vaults and configs
 vault.json
 *.env
+*.env.*
+!.env.example
 .goroute/
 
 # IDE and OS files

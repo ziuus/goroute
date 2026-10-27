@@ -16,12 +16,12 @@ var (
 	rustAvailable bool
 	rustVersion   string
 
-	fnVersion      func() uintptr
-	fnCompress     func(input uintptr, level int32) uintptr
+	fnVersion      func() *byte
+	fnCompress     func(input uintptr, level int32) *byte
 	fnCountTokens  func(input uintptr) int32
-	fnFreeString   func(ptr uintptr)
-	fnResolveModel func(modelPtr uintptr, providersPtr uintptr) uintptr
-	fnSanitizePII  func(inputPtr uintptr) uintptr
+	fnFreeString   func(ptr *byte)
+	fnResolveModel func(modelPtr uintptr, providersPtr uintptr) *byte
+	fnSanitizePII  func(inputPtr uintptr) *byte
 )
 
 func findRustLib() string {
@@ -79,18 +79,16 @@ func initRust() {
 	}
 }
 
-func goString(ptr uintptr) string {
-	if ptr == 0 {
+func goString(ptr *byte) string {
+	if ptr == nil {
 		return ""
 	}
-	var bytes []byte
-	p := (*byte)(unsafe.Pointer(ptr))
-	for *p != 0 {
-		bytes = append(bytes, *p)
-		ptr++
-		p = (*byte)(unsafe.Pointer(ptr))
+	p := unsafe.Pointer(ptr)
+	var length int
+	for *(*byte)(unsafe.Add(p, length)) != 0 {
+		length++
 	}
-	return string(bytes)
+	return string(unsafe.Slice(ptr, length))
 }
 
 func cString(s string) ([]byte, uintptr) {
@@ -135,7 +133,7 @@ func ResolveModel(model string, activeProviders []string) (*ModelResolution, boo
 	_, pPtr := cString(provCsv)
 
 	outPtr := fnResolveModel(mPtr, pPtr)
-	if outPtr == 0 {
+	if outPtr == nil {
 		return nil, false
 	}
 	defer fnFreeString(outPtr)
@@ -156,7 +154,7 @@ func SanitizePII(input string) string {
 
 	_, inPtr := cString(input)
 	outPtr := fnSanitizePII(inPtr)
-	if outPtr == 0 {
+	if outPtr == nil {
 		return input
 	}
 	defer fnFreeString(outPtr)
@@ -172,7 +170,7 @@ func Compress(input string, level int32) (string, bool) {
 
 	_, inPtr := cString(input)
 	outPtr := fnCompress(inPtr, level)
-	if outPtr == 0 {
+	if outPtr == nil {
 		return input, false
 	}
 	defer fnFreeString(outPtr)

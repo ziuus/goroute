@@ -1,6 +1,6 @@
 # GoRoute
 
-**High-Performance LLM Gateway & Multi-Provider Router for Coding Agents**  
+**High-Performance AI Gateway & Multi-Provider Router**  
 *Sub-millisecond routing • < 5 MB RAM footprint • Go core with Rust SIMD acceleration • 330+ Providers*
 
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
@@ -10,159 +10,184 @@
 [![Latency](https://img.shields.io/badge/Latency-0.86ms-6366f1?style=flat-square)](#benchmarks)
 [![License](https://img.shields.io/badge/License-MIT-3DA639?style=flat-square)](LICENSE)
 
-[Overview](#overview) • [Quickstart](#quickstart) • [Benchmarks](#benchmarks) • [OmniRoute Sync](#omniroute-vault-sync) • [Agent Fleet](#agent-fleet) • [Combos](#combos--failover) • [CLI Reference](#cli-reference)
+[Overview](#overview) • [Installation](#installation) • [Quickstart](#quickstart) • [Usage Examples](#usage-examples) • [Provider Management](#provider-management) • [Combos & Failover](#combos--failover) • [Benchmarks](#benchmarks) • [Contributing](#contributing)
 
 ---
 
 ## Overview
 
-Modern AI coding agents (**Claude Code, OpenCode, Cursor, Codex CLI, Cline, Aider, Hermes**) require uninterrupted upstream connectivity, multi-account token pooling, and protocol translation.
+GoRoute is a single-binary LLM gateway engineered to sit between your developer tools, coding agents, and upstream AI models. It aggregates multiple accounts across frontier labs and inference platforms, balances traffic, performs protocol translation on the fly, and guarantees continuous availability through automatic failover.
 
-Traditional proxy gateways (OmniRoute, LiteLLM) run heavy Node.js or Python processes consuming **380 MB to 1.5 GB of RAM** 24/7.
+Traditional proxy gateways rely on heavyweight Python or Node.js runtimes consuming **400 MB to 1.5 GB of RAM**. GoRoute delivers enterprise routing at **< 5 MB idle RAM** and **0.86 ms dispatch latency** with zero background bloat.
 
-**GoRoute** compiles into a single static binary running as an ultra-lightweight local daemon:
-- **0.86 ms routing latency**: 20x faster than interpreted gateways.
-- **&lt; 5 MB memory footprint**: Runs continuously in the background without draining system resources.
-- **Multi-Account OAuth Pooling**: Round-robins across Google Antigravity, AWS Q Developer / Kiro, and OpenAI Codex accounts.
-- **Universal Protocol Translation**: Translates OpenAI Chat, Anthropic Messages (`/v1/messages`), and Google Gemini formats automatically.
-- **Zero Dependencies**: Single standalone executable without requiring Node.js, Python, or Docker.
+### Key Highlights
+
+- **Ultra-Low Memory Footprint**: Runs continuously as a system daemon in `< 5 MB RSS RAM`.
+- **Sub-Millisecond Routing**: Up to 21x lower overhead than interpreted Python or Node.js gateways.
+- **Universal Protocol Translation**: Transparently bridges OpenAI Chat Completions, Anthropic Messages (`/v1/messages`), and Google Gemini formats.
+- **Multi-Account OAuth Pooling**: Seamless round-robin and priority failover across multiple Google Antigravity, AWS Q Developer / Kiro, and OpenAI Codex accounts.
+- **Dedicated Provider Connection Studio**: In-dashboard studio to test pings, reorder priority, toggle active status, and audit cooldowns.
+- **1-Click OmniRoute Vault Sync**: Decrypts and imports existing OmniRoute SQLite vaults in under a second (`goroute sync omniroute`).
+- **Zero External Dependencies**: Single standalone executable without requiring Docker, Python, or Node.js.
 
 ---
 
-## Benchmarks
+## Installation
 
-Tested on Linux x86_64 under 500 concurrent streaming requests:
+### Option A: npm / npx (Universal)
+```bash
+npm install -g goroute
+```
 
-| Metric | OmniRoute *(Node/Next.js)* | LiteLLM *(Python)* | GoRoute *(Go + Rust)* | Efficiency Gain |
-| :--- | :--- | :--- | :--- | :--- |
-| **Idle Memory (RSS)** | `~380 MB` | `~420 MB` | **`4.7 MB`** | **98.8% less RAM** |
-| **Routing Latency** | `18.4 ms` | `24.1 ms` | **`0.86 ms`** | **21x faster** |
-| **Under 500 Concurrency** | `850 MB – 2.1 GB` | `1.2 GB` | **`18.2 MB`** | **98.5% less RAM** |
-| **Cold Startup Time** | `3,200 ms` | `2,800 ms` | **`11 ms`** | **290x faster** |
-| **Dependencies** | Node 20+, 800+ npm pkgs | Python 3.10+, pip pkgs | **Zero (Single static binary)** | **Self-contained** |
-| **Default Port** | `20128` | `4000` | **`8128`** | **Collision-free** |
+### Option B: One-Line Native Installer (Linux & macOS)
+```bash
+curl -fsSL https://raw.githubusercontent.com/ziuus/goroute/main/install.sh | bash
+```
+
+### Option C: Homebrew (macOS & Linux)
+```bash
+brew install ziuus/goroute/goroute
+```
+
+### Option D: Go Toolchain
+```bash
+go install github.com/ziuus/goroute/cmd/goroute@latest
+```
 
 ---
 
 ## Quickstart
 
-### 1. Install
-
-Choose your preferred installation method:
-
+### 1. Launch the Gateway Daemon
 ```bash
-# Option A: via npm / npx (Zero Go required)
-npm install -g goroute
-
-# Option B: One-line native installer (Linux & macOS)
-curl -fsSL https://raw.githubusercontent.com/ziuus/goroute/main/install.sh | bash
-
-# Option C: Homebrew (macOS & Linux)
-brew install ziuus/goroute/goroute
-
-# Option D: Go toolchain
-go install github.com/ziuus/goroute/cmd/goroute@latest
+goroute serve
 ```
 
-### 2. Start Gateway
-
+To enable 24/7 background autostart on system boot:
 ```bash
-# Start the local gateway (port 8128)
-goroute serve
-
-# Or enable background 24/7 autostart (systemd user daemon)
 goroute autostart enable
 ```
 
-The web dashboard is immediately accessible at **`http://localhost:8128/`**.
+### 2. Access the Web Dashboard
+Open **`http://localhost:8128/`** in your browser to view the real-time topology, rolling quotas, agent fleet status, and provider connection studio.
 
----
-
-## OmniRoute Vault Sync
-
-Already using OmniRoute? Migrate all your accounts, OAuth tokens, credentials, and custom failover combos in **0.5 seconds**:
-
+### 3. Connect Upstream Accounts
 ```bash
-goroute sync omniroute
-```
-
-```
-⚡ Syncing providers, credentials, and combos from OmniRoute SQLite vault...
-✅ Sync complete: 6 providers, 7 accounts, 2 combos
-   • Imported Antigravity accounts (Google Cloud Code OAuth)
-   • Imported Kiro accounts (AWS Builder ID)
-   • Imported TokenRouter & AgentRouter endpoints
-   • Imported custom combos (claude-models, deepseek)
-```
-
-*OmniRoute's AES-256-GCM encrypted database is decrypted in pure Go using scrypt key derivation from `~/.omniroute/.env`.*
-
----
-
-## Connecting Providers
-
-GoRoute supports **330+ provider presets** with automatic Base URL resolution, model catalogs, and auth handling:
-
-### Autonomous OAuth Pools
-```bash
-# Google Antigravity (Cloud Code PKCE OAuth)
+# Connect Google Antigravity accounts (Google Cloud Code OAuth)
 goroute auth login antigravity
 
-# AWS Q Developer / Kiro (AWS Builder ID Device Flow)
+# Connect AWS Q Developer / Kiro accounts
 goroute auth import kiro
 
-# OpenAI Codex CLI (Browser Device Flow)
-curl -s http://127.0.0.1:8128/api/oauth/codex/device-authorize
-```
-
-### Frontier & Inference Providers
-```bash
-goroute provider add groq --key gsk_...
-goroute provider add deepseek --key sk_...
+# Add API key providers
 goroute provider add anthropic --key sk-ant-...
-goroute provider add gemini --key your_key
-goroute provider add openrouter --key sk-or-...
-```
-
-### Local Offline Providers
-```bash
-goroute provider add ollama
-goroute provider add lmstudio
-goroute provider add vllm --url http://localhost:8000/v1
+goroute provider add deepseek --key sk-...
+goroute provider add groq --key gsk_...
 ```
 
 ---
 
-## Agent Fleet
+## Usage Examples
 
-Configure your local coding agents with one command:
+GoRoute exposes standard endpoints on `http://localhost:8128/`:
+- **OpenAI Compatible**: `http://localhost:8128/v1/chat/completions`
+- **Anthropic Compatible**: `http://localhost:8128/v1/messages`
+- **Model Discovery**: `http://localhost:8128/v1/models`
+- **Token Counting**: `http://localhost:8128/v1/messages/count_tokens`
 
+### 1. cURL — Chat Completion
 ```bash
-goroute setup claude       # Configure Claude Code CLI (~/.claude/settings.json)
-goroute setup opencode     # Configure OpenCode (~/.config/opencode/opencode.json)
-goroute setup codex        # Configure OpenAI Codex CLI (~/.codex/config.toml)
-goroute setup cursor       # Configure Cursor IDE (~/.config/Cursor/User/settings.json)
-goroute setup cline        # Configure Cline VS Code extension
-goroute setup all          # Auto-configure all 35 local agents in parallel
+curl -s http://localhost:8128/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer goroute" \
+  -d '{
+    "model": "antigravity/gemini-3.8-flash-high",
+    "messages": [
+      {"role": "system", "content": "You are a concise engineering assistant."},
+      {"role": "user", "content": "How do I optimize SQLite WAL mode in Go?"}
+    ]
+  }'
 ```
 
-### Supported Agent Compatibility
+### 2. cURL — Anthropic Messages with Thinking Tokens
+```bash
+curl -s http://localhost:8128/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "x-api-key: goroute" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 4096,
+    "thinking": {"type": "enabled", "budget_tokens": 2048},
+    "messages": [
+      {"role": "user", "content": "Write a pure Go SIMD bitmask counter."}
+    ]
+  }'
+```
 
-| Agent | Protocol | Configuration File | Supported Features |
-| :--- | :--- | :--- | :--- |
-| **Claude Code** | `/v1/messages` | `~/.claude/settings.json` | Thinking tokens, tool use, cc-discovery mirroring |
-| **OpenCode** | OpenAI Compatible | `~/.config/opencode/opencode.json` | Full models catalog, dual build/plan models |
-| **Cursor IDE** | OpenAI Compatible | `~/.config/Cursor/User/settings.json` | Chat completions, vector embeddings |
-| **Codex CLI** | Responses API | `~/.codex/goroute.config.toml` | Custom profiles, auto-compaction |
-| **Cline & Roo Code**| OpenAI Compatible | `~/.cline/data/secrets.json` | Act & Plan modes, streaming tool calls |
-| **Hermes Agent** | OpenAI Compatible | `~/.hermes/config.json` | Real-time reasoning inspection |
-| **Aider** | OpenAI Compatible | `~/.aider.conf.yml` | Git commit message generation, diff edits |
+### 3. Python (OpenAI SDK)
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8128/v1",
+    api_key="goroute"
+)
+
+response = client.chat.completions.create(
+    model="claude",  # Routes to active multi-account combo
+    messages=[{"role": "user", "content": "Explain EWMA latency routing."}]
+)
+
+print(response.choices[0].message.content)
+```
+
+### 4. Node.js / TypeScript (Anthropic SDK)
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  baseURL: "http://localhost:8128",
+  apiKey: "goroute"
+});
+
+const message = await client.messages.create({
+  model: "antigravity/claude-sonnet-4-6",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Implement a thread-safe token bucket in Go." }]
+});
+
+console.log(message.content[0]);
+```
+
+### 5. Automated Coding Agent Setup
+Configure local coding agents to route through GoRoute with one command:
+```bash
+goroute setup all        # Auto-configures all 35 supported developer tools
+goroute setup claude     # Configure Claude Code CLI (~/.claude/settings.json)
+goroute setup opencode   # Configure OpenCode (~/.config/opencode/opencode.json)
+goroute setup cursor     # Configure Cursor IDE (~/.config/Cursor/User/settings.json)
+goroute setup codex      # Configure OpenAI Codex CLI (~/.codex/config.toml)
+```
+
+---
+
+## Provider Management
+
+GoRoute includes built-in presets for **330+ AI providers**:
+
+| Provider Category | Supported Platforms | Configuration Method |
+| :--- | :--- | :--- |
+| **Autonomous OAuth Pools** | Google Antigravity, AWS Q / Kiro, Codex CLI | `goroute auth login <provider>` |
+| **Frontier Model Labs** | Anthropic, OpenAI, Google Gemini, Mistral | `goroute provider add <id> --key <key>` |
+| **Inference Networks** | Groq, DeepSeek, OpenRouter, Together AI, Cerebras | `goroute provider add <id> --key <key>` |
+| **Local Offline LLMs** | Ollama, LM Studio, vLLM, LocalAI | `goroute provider add ollama` |
 
 ---
 
 ## Combos & Failover
 
-Combos group multiple provider accounts and models under a single virtual model name. If an account hits a rate limit (HTTP 429), context overflow, or upstream outage, GoRoute cascades to the next healthy account in sub-milliseconds:
+Combos aggregate multiple accounts and models under a single virtual model name. If an upstream account encounters rate limits (HTTP 429), token exhaustion, or outages, GoRoute transparently fails over to the next healthy account in sub-milliseconds:
 
 ```yaml
 # ~/.goroute/config.yaml
@@ -188,7 +213,7 @@ combos:
         model: llama-3.3-70b-versatile
 ```
 
-Targeting the combo from any client:
+Target the virtual combo as a standard model name:
 ```bash
 curl -s http://localhost:8128/v1/chat/completions \
   -H "Authorization: Bearer goroute" \
@@ -197,72 +222,37 @@ curl -s http://localhost:8128/v1/chat/completions \
 
 ---
 
-## CLI Reference
+## Benchmarks
 
-```bash
-# Gateway Operation
-goroute serve                       # Start gateway daemon on port 8128
-goroute serve --no-dashboard        # Headless mode (< 5 MB RAM)
-goroute autostart enable            # Enable system background service (systemd)
-goroute autostart status            # Check service status
-goroute status                      # Diagnostic health check & model listing
+Benchmarked on Linux x86_64 under 500 concurrent streaming requests:
 
-# OmniRoute Vault Sync
-goroute sync omniroute              # 1-click decrypt & import all accounts/combos
-
-# Provider & Account Management
-goroute catalog                     # Browse 330+ provider presets
-goroute provider add <id> --key <k> # Add API key provider
-goroute auth login antigravity      # Interactive PKCE OAuth login
-goroute auth import kiro            # Import AWS Builder ID tokens
-
-# Agent Integration
-goroute setup all                   # Configure all 35 coding agents
-goroute setup <agent>               # Configure specific agent (claude, opencode, etc.)
-goroute run <agent> [args...]       # Launch agent with injected proxy environment
-```
+| Metric | OmniRoute *(Node/Next.js)* | LiteLLM *(Python)* | GoRoute *(Go + Rust)* | Efficiency Gain |
+| :--- | :--- | :--- | :--- | :--- |
+| **Idle Memory (RSS)** | `~380 MB` | `~420 MB` | **`4.7 MB`** | **98.8% less RAM** |
+| **Routing Latency** | `18.4 ms` | `24.1 ms` | **`0.86 ms`** | **21x faster** |
+| **Under 500 Concurrency** | `850 MB – 2.1 GB` | `1.2 GB` | **`18.2 MB`** | **98.5% less RAM** |
+| **Cold Startup Time** | `3,200 ms` | `2,800 ms` | **`11 ms`** | **290x faster** |
+| **Dependencies** | Node 20+, 800+ npm pkgs | Python 3.10+, pip pkgs | **Zero (Single static binary)** | **Self-contained** |
+| **Default Port** | `20128` | `4000` | **`8128`** | **Collision-free** |
 
 ---
 
-## Architecture
+## Contributing
 
-```
-                      ┌──────────────────────────────────────┐
-                      │    Coding Agents & Client Tools      │
-                      │  Claude Code • OpenCode • Cursor     │
-                      └──────────────────┬───────────────────┘
-                                         │ HTTP / SSE (:8128)
-                                         ▼
-                      ┌──────────────────────────────────────┐
-                      │               GoRoute                │
-                      │                                      │
-                      │  ┌────────────────────────────────┐  │
-                      │  │  Universal Protocol Translator │  │
-                      │  │  OpenAI ↔ Anthropic ↔ Gemini   │  │
-                      │  └────────────────┬───────────────┘  │
-                      │                   ▼                  │
-                      │  ┌────────────────────────────────┐  │
-                      │  │ Multi-Account Pools & Combos   │  │
-                      │  │ Round-Robin • Priority Weight  │  │
-                      │  └────────────────┬───────────────┘  │
-                      │                   ▼                  │
-                      │  ┌────────────────────────────────┐  │
-                      │  │ Circuit Breakers & Cooldowns   │  │
-                      │  │ Adaptive Lockout • Idempotency │  │
-                      │  └────────────────┬───────────────┘  │
-                      └──────────────────┼───────────────────┘
-                                         │
-        ┌────────────────────────────────┼────────────────────────────────┐
-        ▼                                ▼                                ▼
-┌───────────────┐                ┌───────────────┐                ┌───────────────┐
-│ Google Cloud  │                │ AWS Q / Kiro  │                │ Frontier Labs │
-│ Antigravity   │                │ Multi-Account │                │ Anthropic     │
-│ OAuth Pool    │                │ Builder ID    │                │ OpenAI / Groq │
-└───────────────┘                └───────────────┘                └───────────────┘
+We welcome community contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for local environment setup, testing guidelines, and pull request conventions.
+
+```bash
+# Clone and run unit tests
+git clone https://github.com/ziuus/goroute.git
+cd goroute
+make test
+
+# Build binary
+make build
 ```
 
 ---
 
 ## License
 
-MIT © [ziuus](https://github.com/ziuus). Engineered for developers who demand speed.
+MIT © [ziuus](https://github.com/ziuus). Engineered for speed and efficiency.

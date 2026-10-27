@@ -34,5 +34,8 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -v ./...
 
+      - name: Code Vet & Hygiene
+        run: go vet ./...
+
       - name: Build Binary
         run: go build -v ./cmd/goroute

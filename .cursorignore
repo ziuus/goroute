@@ -1,0 +1,13 @@
+# High-noise and compiled directories
+web/dist/
+web-ui/.next/
+web-ui/out/
+web-ui/node_modules/
+crates/**/target/
+target/
+bin/
+assets/
+.git/
+*.log
+*.sqlite
+*.db
