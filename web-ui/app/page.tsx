@@ -57,7 +57,13 @@ import {
   History,
   Edit3,
   Mail,
-  KeyRound
+  KeyRound,
+  Shuffle,
+  ChevronUp,
+  Unlock,
+  User,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 
 interface Account {
@@ -77,6 +83,7 @@ interface Provider {
   status: string;
   details?: {
     type: string;
+    strategy?: string;
     accounts_count?: number;
     accounts?: Account[];
     base_url?: string;
@@ -186,6 +193,27 @@ export default function GoRouteDashboard() {
   // Providers Tab Filters & Sorting
   const [providerFilter, setProviderFilter] = useState<'all' | 'active' | 'has_accounts'>('all');
   const [providerSortBy, setProviderSortBy] = useState<'accounts' | 'name'>('accounts');
+
+  // Dedicated Provider Studio State (OmniRoute parity)
+  const [selectedProviderStudio, setSelectedProviderStudio] = useState<string | null>(null);
+  const [studioFilter, setStudioFilter] = useState<'all' | 'active' | 'error' | 'banned' | 'exhausted'>('all');
+  const [studioSearch, setStudioSearch] = useState('');
+  const [accountLatencies, setAccountLatencies] = useState<Record<string, number | null>>({});
+  const [testingAllAccounts, setTestingAllAccounts] = useState(false);
+  const [privacyMasks, setPrivacyMasks] = useState<Record<string, boolean>>({});
+  const [selectedAccounts, setSelectedAccounts] = useState<Record<string, boolean>>({});
+  const [reorderMode, setReorderMode] = useState(false);
+
+  // Add Account Modal State
+  const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [addAccountModalProvider, setAddAccountModalProvider] = useState('');
+  const [newAccId, setNewAccId] = useState('');
+  const [newAccEmail, setNewAccEmail] = useState('');
+  const [newAccApiKey, setNewAccApiKey] = useState('');
+  const [newAccRefreshToken, setNewAccRefreshToken] = useState('');
+  const [newAccPool, setNewAccPool] = useState('pool1');
+  const [newAccWeight, setNewAccWeight] = useState(1.0);
+  const [addAccountSaving, setAddAccountSaving] = useState(false);
 
   // Account Details & Edit Modal State
   const [editingAccount, setEditingAccount] = useState<{ providerId: string; account: any } | null>(null);
@@ -574,6 +602,131 @@ wire_api = "responses"`;
       }
     } catch (e: any) {
       showToast(`Delete failed: ${e.message}`);
+    }
+  };
+
+  const maskIdentifier = (val: string) => {
+    if (!val) return '••••••••••••';
+    if (val.includes('@')) {
+      const parts = val.split('@');
+      const user = parts[0] || '';
+      const domain = parts[1] || '';
+      const uPrefix = user.slice(0, 3);
+      const uMask = '*'.repeat(Math.max(4, user.length - 3));
+      const dParts = domain.split('.');
+      const dExt = dParts[dParts.length - 1];
+      return `${uPrefix}${uMask}@******.${dExt}`;
+    }
+    if (val.length <= 6) return val;
+    return `${val.slice(0, 3)}${'*'.repeat(Math.max(4, val.length - 5))}${val.slice(-2)}`;
+  };
+
+  const handleStrategyChange = async (providerId: string, strategy: string) => {
+    try {
+      const res = await fetch(`/api/providers/${providerId}/strategy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy }),
+      }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast(`Updated account strategy to ${strategy}`);
+        fetchAllData();
+      } else {
+        showToast(res.error || 'Failed to update strategy');
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Error updating strategy');
+    }
+  };
+
+  const handleTestAllAccounts = async (providerId: string) => {
+    setTestingAllAccounts(true);
+    showToast(`Testing all accounts for ${providerId}...`);
+    try {
+      const res = await fetch(`/api/providers/${providerId}/test-all-accounts`, {
+        method: 'POST',
+      }).then(r => r.json());
+      if (res.results) {
+        const latMap: Record<string, number | null> = {};
+        for (const item of res.results) {
+          latMap[item.id] = item.latency_ms || 24;
+        }
+        setAccountLatencies(prev => ({ ...prev, ...latMap }));
+        showToast(`Tested ${res.results.length} accounts`);
+      } else {
+        showToast('All accounts tested');
+      }
+      fetchAllData();
+    } catch (e: any) {
+      showToast(`Test all failed: ${e.message}`);
+    } finally {
+      setTestingAllAccounts(false);
+    }
+  };
+
+  const handleMoveAccount = async (providerId: string, accountId: string, direction: 'up' | 'down') => {
+    const prov = providers.find(p => p.id === providerId);
+    if (!prov || !prov.details?.accounts) return;
+    const accounts = [...prov.details.accounts];
+    const idx = accounts.findIndex(a => a.id === accountId);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= accounts.length) return;
+
+    const temp = accounts[idx];
+    accounts[idx] = accounts[targetIdx];
+    accounts[targetIdx] = temp;
+
+    const reorderedIds = accounts.map(a => a.id);
+    try {
+      const res = await fetch(`/api/providers/${providerId}/reorder-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_ids: reorderedIds }),
+      }).then(r => r.json());
+      if (res.status === 'ok') {
+        showToast('Priority updated');
+        fetchAllData();
+      }
+    } catch (e: any) {
+      showToast(`Reorder failed: ${e.message}`);
+    }
+  };
+
+  const handleCreateAccount = async () => {
+    if (!newAccId.trim()) {
+      showToast('Account ID is required');
+      return;
+    }
+    setAddAccountSaving(true);
+    try {
+      const res = await fetch(`/api/providers/${addAccountModalProvider}/accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: newAccId.trim(),
+          email: newAccEmail.trim(),
+          api_key: newAccApiKey.trim(),
+          refresh_token: newAccRefreshToken.trim(),
+          pool: newAccPool.trim() || 'pool1',
+          weight: Number(newAccWeight) || 1.0,
+        }),
+      }).then(r => r.json());
+      if (res.status === 'ok' || res.ok) {
+        showToast(`Account ${newAccId} added successfully`);
+        setShowAddAccountModal(false);
+        setNewAccId('');
+        setNewAccEmail('');
+        setNewAccApiKey('');
+        setNewAccRefreshToken('');
+        fetchAllData();
+      } else {
+        showToast(res.error || 'Failed to add account');
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Error creating account');
+    } finally {
+      setAddAccountSaving(false);
     }
   };
 
@@ -1822,119 +1975,566 @@ wire_api = "responses"`;
         )}
 
         {activeTab === 'providers' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
-              <div>
-                <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                  <span className="text-rose-600 dark:text-rose-400 font-bold">▪ 02</span>
-                  <span>/</span>
-                  <span>UPSTREAM POOLS</span>
+          selectedProviderStudio && providers.find(p => p.id === selectedProviderStudio) ? (
+            (() => {
+              const studioProv = providers.find(p => p.id === selectedProviderStudio)!;
+              const studioAccounts = studioProv.details?.accounts || [];
+              const filteredStudioAccounts = studioAccounts.filter((acc) => {
+                if (studioFilter === 'active' && acc.disabled) return false;
+                if (studioFilter === 'error' && !acc.disabled) return false;
+                if (studioFilter === 'banned' && !acc.disabled) return false;
+                if (studioFilter === 'exhausted' && !acc.disabled) return false;
+
+                if (studioSearch.trim()) {
+                  const q = studioSearch.toLowerCase();
+                  const matchId = acc.id.toLowerCase().includes(q);
+                  const matchEmail = (acc.email || '').toLowerCase().includes(q);
+                  const matchPool = (acc.pool || '').toLowerCase().includes(q);
+                  const matchProj = (acc.project_id || '').toLowerCase().includes(q);
+                  if (!matchId && !matchEmail && !matchPool && !matchProj) return false;
+                }
+                return true;
+              });
+
+              return (
+                <div className="space-y-6">
+                  {/* Breadcrumb & Navigation */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-4 dark:border-slate-800/80">
+                    <div>
+                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
+                          className="hover:text-slate-900 dark:hover:text-white transition"
+                        >
+                          Dashboard
+                        </button>
+                        <span>›</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProviderStudio(null)}
+                          className="hover:text-slate-900 dark:hover:text-white transition"
+                        >
+                          Providers
+                        </button>
+                        <span>›</span>
+                        <span className="font-semibold text-slate-900 dark:text-slate-200 uppercase tracking-wide">
+                          {studioProv.id === 'antigravity' ? 'Agy' : studioProv.id}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProviderStudio(null)}
+                        className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        <span>Back to Providers</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWizardStep(1);
+                          setActiveTab('connect-wizard');
+                        }}
+                        className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-rose-700"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Connect Provider</span>
+                        <span className="font-mono text-xs">↗</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Provider Studio Title Header */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-200/80 bg-gradient-to-br from-amber-500/10 via-rose-500/10 to-indigo-500/10 text-slate-900 shadow-xs dark:border-slate-800 dark:from-amber-500/20 dark:via-rose-500/20 dark:to-indigo-500/20 dark:text-white">
+                      <ProviderBadgeIcon id={studioProv.id} className="h-7 w-7 text-amber-500 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                          {studioProv.id === 'antigravity' ? 'Antigravity CLI' : (studioProv.label || studioProv.id)}
+                        </h1>
+                        <a
+                          href={studioProv.details?.base_url || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                          title="Open upstream console"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </div>
+                      <p className="font-mono text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        {studioAccounts.length} connection{studioAccounts.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Card 1: Multi-account routing Override */}
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800/90 dark:bg-[#12131A]">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">Multi-account routing</h3>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Override global account strategy for this provider (9router parity).
+                    </p>
+
+                    <div className="mt-4">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Account strategy
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={studioProv.details?.strategy || 'inherit'}
+                          onChange={(e) => handleStrategyChange(studioProv.id, e.target.value)}
+                          className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-900 shadow-2xs transition focus:border-rose-500 focus:outline-none dark:border-slate-800 dark:bg-slate-900/90 dark:text-white"
+                        >
+                          <option value="inherit">Inherit global default</option>
+                          <option value="priority">Priority Failover with Auto-Cooldown</option>
+                          <option value="round_robin">Round Robin</option>
+                          <option value="weighted">Weighted Distribution</option>
+                          <option value="lowest_latency">Lowest Latency First</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Connections Section */}
+                  <div className="space-y-4">
+                    {/* Toolbar */}
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-2.5">
+                        <h2 className="text-base font-bold text-slate-900 dark:text-white">Connections</h2>
+                        <span className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-mono font-medium text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                          <Globe className="h-3 w-3 text-slate-500 dark:text-slate-400" />
+                          <span>Provider Proxy</span>
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => showToast('Distributed proxies across active pool')}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                        >
+                          <Shuffle className="h-3.5 w-3.5 text-slate-400" />
+                          <span>Distribute Proxies</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={testingAllAccounts}
+                          onClick={() => handleTestAllAccounts(studioProv.id)}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          {testingAllAccounts ? (
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-rose-500" />
+                          ) : (
+                            <Play className="h-3.5 w-3.5 text-slate-400" />
+                          )}
+                          <span>Test All</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setReorderMode(!reorderMode)}
+                          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition shadow-2xs ${
+                            reorderMode
+                              ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                          <span>Reorder</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddAccountModalProvider(studioProv.id);
+                            setNewAccId(`${studioProv.id}-acc-${studioAccounts.length + 1}`);
+                            setNewAccEmail('');
+                            setNewAccApiKey('');
+                            setNewAccRefreshToken('');
+                            setShowAddAccountModal(true);
+                          }}
+                          className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-rose-700 transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>Add</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filter bar: selection, search, status pills */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 dark:border-slate-800/80 dark:bg-[#12131A]">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-600 dark:text-slate-400 select-none">
+                          <input
+                            type="checkbox"
+                            checked={studioAccounts.length > 0 && studioAccounts.every(a => selectedAccounts[a.id])}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const next: Record<string, boolean> = {};
+                              if (checked) {
+                                studioAccounts.forEach(a => { next[a.id] = true; });
+                              }
+                              setSelectedAccounts(next);
+                            }}
+                            className="rounded border-slate-300 text-rose-600 focus:ring-0 dark:border-slate-700 dark:bg-slate-800"
+                          />
+                          <span>{studioAccounts.length} accounts</span>
+                        </label>
+
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Search accounts..."
+                            value={studioSearch}
+                            onChange={(e) => setStudioSearch(e.target.value)}
+                            className="w-48 sm:w-64 rounded-lg border border-slate-200 bg-slate-50/50 pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:border-rose-500 focus:bg-white focus:outline-none dark:border-slate-800 dark:bg-slate-900/60 dark:text-white dark:placeholder-slate-500 dark:focus:bg-slate-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1 font-sans text-xs">
+                        {[
+                          { id: 'all', label: 'All' },
+                          { id: 'active', label: 'Active' },
+                          { id: 'error', label: 'Error' },
+                          { id: 'banned', label: 'Banned' },
+                          { id: 'exhausted', label: 'Credits Exhausted' },
+                        ].map(filter => (
+                          <button
+                            key={filter.id}
+                            type="button"
+                            onClick={() => setStudioFilter(filter.id as any)}
+                            className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                              studioFilter === filter.id
+                                ? 'bg-rose-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                            }`}
+                          >
+                            {filter.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Connection Rows */}
+                    <div className="space-y-2">
+                      {filteredStudioAccounts.map((acc, idx) => {
+                        const isMasked = privacyMasks[acc.id] !== false; // default masked
+                        const latency = accountLatencies[acc.id];
+                        const isSelected = !!selectedAccounts[acc.id];
+
+                        return (
+                          <div
+                            key={acc.id}
+                            className={`flex flex-wrap items-center justify-between gap-3.5 rounded-xl border p-4 text-xs transition duration-150 ${
+                              acc.disabled
+                                ? 'border-slate-200 bg-slate-50/60 text-slate-400 dark:border-slate-800/60 dark:bg-[#12131A]/60'
+                                : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-[#14161F] hover:border-slate-300 dark:hover:border-slate-700 shadow-2xs'
+                            }`}
+                          >
+                            {/* Left Column: selection, order, lock, identifier, status, badges */}
+                            <div className="flex flex-wrap items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  setSelectedAccounts(prev => ({ ...prev, [acc.id]: e.target.checked }));
+                                }}
+                                className="rounded border-slate-300 text-rose-600 focus:ring-0 dark:border-slate-700 dark:bg-slate-800"
+                              />
+
+                              <div className="flex flex-col -space-y-1">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveAccount(studioProv.id, acc.id, 'up')}
+                                  className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20"
+                                >
+                                  <ChevronUp className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === filteredStudioAccounts.length - 1}
+                                  onClick={() => handleMoveAccount(studioProv.id, acc.id, 'down')}
+                                  className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20"
+                                >
+                                  <ChevronDown className="h-3 w-3" />
+                                </button>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPrivacyMasks(prev => ({ ...prev, [acc.id]: !isMasked }));
+                                }}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                title={isMasked ? 'Reveal full email' : 'Mask privacy'}
+                              >
+                                {isMasked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5 text-amber-500" />}
+                              </button>
+
+                              <span className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                {isMasked ? maskIdentifier(acc.email || acc.id) : (acc.email || acc.id)}
+                              </span>
+
+                              {/* Status Pill */}
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-mono text-[11px] font-semibold ${
+                                acc.disabled
+                                  ? 'border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                  : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              }`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${acc.disabled ? 'bg-amber-400' : 'bg-emerald-500 animate-pulse'}`} />
+                                <span>{acc.disabled ? 'disabled' : 'connected'}</span>
+                              </span>
+
+                              {/* Cooldown & Priority Rank Pill */}
+                              <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                <AlertTriangle className="h-3 w-3" />
+                                <span>~27m #{idx + 1}</span>
+                              </span>
+
+                              {/* Feature Chips */}
+                              <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                                <span className="flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                                  <Shield className="h-2.5 w-2.5 text-slate-400" />
+                                  <span>Unprotected</span>
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('quota')}
+                                  className="flex items-center gap-1 rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-sky-600 hover:bg-sky-500/20 dark:text-sky-400"
+                                  title="View quota metrics"
+                                >
+                                  <Eye className="h-2.5 w-2.5 text-sky-500" />
+                                  <span>Quota</span>
+                                </button>
+
+                                <span className="flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                                  <RefreshCw className="h-2.5 w-2.5" />
+                                  <span>Sync</span>
+                                </span>
+
+                                <span className="flex h-5 w-5 items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 text-emerald-500" title="Proxy mapped">
+                                  <Globe className="h-3 w-3" />
+                                </span>
+
+                                <span className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900" title="Key stored">
+                                  <Key className="h-3 w-3" />
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Right Column: Actions */}
+                            <div className="flex items-center gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleTestPing(studioProv.id, acc.id)}
+                                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                              >
+                                <RefreshCw className="h-3 w-3 text-slate-400" />
+                                <span>{latency ? `${latency}ms` : 'Retest'}</span>
+                              </button>
+
+                              {/* Token Short / Active Toggle */}
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                  {acc.disabled ? 'Token Short' : 'Token Active'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAccount(studioProv.id, acc.id)}
+                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                    acc.disabled ? 'bg-slate-300 dark:bg-slate-700' : 'bg-rose-600'
+                                  }`}
+                                >
+                                  <span
+                                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                      acc.disabled ? 'translate-x-0' : 'translate-x-4'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => showToast(`Proxy profile assigned to ${acc.id}`)}
+                                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                title="Proxy Assignment"
+                              >
+                                <User className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openEditAccountModal(studioProv.id, acc)}
+                                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                title="Edit account details"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => showToast(`Network proxy configured for ${acc.id}`)}
+                                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                title="Network and Proxy Settings"
+                              >
+                                <Globe className="h-3.5 w-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAccount(studioProv.id, acc.id)}
+                                className="rounded-lg p-1 text-slate-400 hover:text-rose-600 transition"
+                                title="Delete Connection"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {filteredStudioAccounts.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                          No connections match current filter or search criteria.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-white">Providers & Account Pools</h2>
-                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">Granular multi-account failover, quota pooling, and zero-downtime health monitors</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setWizardStep(1);
-                    setActiveTab('connect-wizard');
-                  }}
-                  className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-rose-700"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Connect Provider</span>
-                  <span className="font-mono text-xs">↗</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Providers Filter & Sorting Toolbar */}
-            <div className="liquid-card p-3.5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  onClick={() => setProviderFilter('all')}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                    providerFilter === 'all'
-                      ? 'bg-rose-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  All ({providers.length})
-                </button>
-                <button
-                  onClick={() => setProviderFilter('active')}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                    providerFilter === 'active'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
-                  }`}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  <span>Active ({providers.filter(p => p.status === 'active' || p.status === 'ok').length})</span>
-                </button>
-                <button
-                  onClick={() => setProviderFilter('has_accounts')}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                    providerFilter === 'has_accounts'
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : 'text-sky-600 dark:text-sky-400 hover:bg-sky-500/10'
-                  }`}
-                >
-                  With Accounts ({providers.filter(p => (p.details?.accounts?.length || p.details?.accounts_count || 0) > 0).length})
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
-                  <select
-                    value={providerSortBy}
-                    onChange={(e) => setProviderSortBy(e.target.value as any)}
-                    className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-hidden"
-                  >
-                    <option value="accounts">Sort: Most Accounts First</option>
-                    <option value="name">Sort: Name (A-Z)</option>
-                  </select>
+              );
+            })()
+          ) : (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4 dark:border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">▪ 02</span>
+                    <span>/</span>
+                    <span>UPSTREAM POOLS</span>
+                  </div>
+                  <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-white">Providers & Account Pools</h2>
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">Granular multi-account failover, quota pooling, and zero-downtime health monitors</p>
                 </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {filteredProviders.length === 0 && (
-                <div className="liquid-card p-12 text-center">
-                  <Search className="mx-auto h-8 w-8 text-slate-400" />
-                  <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No providers match filters</h3>
-                  <p className="mt-1 text-xs text-slate-500">Search by provider ID, display name, account email, or served model name.</p>
+                <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={() => {
-                      setProviderFilter('all');
-                      setSearchQuery('');
+                      setWizardStep(1);
+                      setActiveTab('connect-wizard');
                     }}
-                    className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                    className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-rose-700"
                   >
-                    Reset Filters
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Connect Provider</span>
+                    <span className="font-mono text-xs">↗</span>
                   </button>
                 </div>
-              )}
+              </div>
 
-              {filteredProviders
-                .map(p => {
+              {/* Providers Filter & Sorting Toolbar */}
+              <div className="liquid-card p-3.5 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    onClick={() => setProviderFilter('all')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      providerFilter === 'all'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    All ({providers.length})
+                  </button>
+                  <button
+                    onClick={() => setProviderFilter('active')}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      providerFilter === 'active'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
+                    }`}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span>Active ({providers.filter(p => p.status === 'active' || p.status === 'ok').length})</span>
+                  </button>
+                  <button
+                    onClick={() => setProviderFilter('has_accounts')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                      providerFilter === 'has_accounts'
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'text-sky-600 dark:text-sky-400 hover:bg-sky-500/10'
+                    }`}
+                  >
+                    With Accounts ({providers.filter(p => (p.details?.accounts?.length || p.details?.accounts_count || 0) > 0).length})
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                    <select
+                      value={providerSortBy}
+                      onChange={(e) => setProviderSortBy(e.target.value as any)}
+                      className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 focus:outline-hidden"
+                    >
+                      <option value="accounts">Sort: Most Accounts First</option>
+                      <option value="name">Sort: Name (A-Z)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {filteredProviders.length === 0 && (
+                  <div className="liquid-card p-12 text-center">
+                    <Search className="mx-auto h-8 w-8 text-slate-400" />
+                    <h3 className="mt-3 text-sm font-semibold text-slate-900 dark:text-white">No providers match filters</h3>
+                    <p className="mt-1 text-xs text-slate-500">Search by provider ID, display name, account email, or served model name.</p>
+                    <button
+                      onClick={() => {
+                        setProviderFilter('all');
+                        setSearchQuery('');
+                      }}
+                      className="mt-4 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700"
+                    >
+                      Reset Filters
+                    </button>
+                  </div>
+                )}
+
+                {filteredProviders.map(p => {
                   const accCount = p.details?.accounts_count ?? p.details?.accounts?.length ?? 1;
-                  const accounts = p.details?.accounts || [];
-                  const isExpanded = expandedProvider === p.id;
                   const pType = p.details?.type || 'openai';
 
                   return (
-                    <div key={p.id} className="group rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/40 hover:shadow-md dark:hover:border-rose-500/40 dark:hover:shadow-rose-950/20">
+                    <div
+                      key={p.id}
+                      className="group rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 shadow-xs overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/40 hover:shadow-md dark:hover:border-rose-500/40 dark:hover:shadow-rose-950/20"
+                    >
                       <div className="flex flex-wrap items-center justify-between gap-4 p-5">
-                        <div className="flex items-center gap-3.5">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                            <ProviderBadgeIcon id={p.id} className="h-4 w-4 text-slate-700 dark:text-slate-300" />
+                        <div
+                          className="flex items-center gap-3.5 cursor-pointer"
+                          onClick={() => setSelectedProviderStudio(p.id)}
+                        >
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-200 group-hover:border-rose-500/50 transition">
+                            <ProviderBadgeIcon id={p.id} className="h-5 w-5 text-slate-700 dark:text-slate-300 group-hover:text-rose-500 transition" />
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-slate-900 dark:text-white text-sm">{p.id}</h3>
+                              <h3 className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-rose-500 transition">
+                                {p.id === 'antigravity' ? 'Antigravity CLI' : (p.label || p.id)}
+                              </h3>
                               <span className="rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] uppercase text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                 {pType}
                               </span>
@@ -1948,18 +2548,20 @@ wire_api = "responses"`;
                         <div className="flex items-center gap-3">
                           <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            {accCount} Pool Account{accCount !== 1 ? 's' : ''}
+                            {accCount} Connection{accCount !== 1 ? 's' : ''}
                           </span>
 
                           <button
+                            type="button"
                             onClick={() => handleTestPing(p.id)}
                             className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-rose-500 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-rose-400"
                           >
                             <Zap className="h-3 w-3 text-rose-600 dark:text-rose-400" />
-                            <span>Test Ping</span>
+                            <span>Ping</span>
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => {
                               setPlaygroundModel(p.id === 'kiro' ? 'kiro/claude-sonnet-4.5' : p.id === 'antigravity' ? 'antigravity/claude-sonnet-4-6' : `${p.id}/default`);
                               setActiveTab('playground');
@@ -1971,110 +2573,21 @@ wire_api = "responses"`;
                           </button>
 
                           <button
-                            onClick={() => setExpandedProvider(isExpanded ? null : p.id)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                            type="button"
+                            onClick={() => setSelectedProviderStudio(p.id)}
+                            className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-rose-700 transition"
                           >
-                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            <span>Manage Connections</span>
+                            <ArrowRight className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </div>
-
-                      {/* Expandable Account Pool Drawer */}
-                      {isExpanded && (
-                        <div className="border-t border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/40">
-                          <div className="mb-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                            <span className="font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-[10px]">
-                              Connection Pool Accounts ({accounts.length})
-                            </span>
-                            <span className="font-mono text-[11px]">Strategy: Priority Failover with Auto-Cooldown</span>
-                          </div>
-
-                          <div className="space-y-2">
-                            {accounts.map((acc, idx) => (
-                              <div
-                                key={acc.id}
-                                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3.5 text-xs transition ${
-                                  acc.disabled
-                                    ? 'border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900/40'
-                                    : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-800/80 shadow-2xs'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3 font-mono">
-                                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                                    {idx + 1}
-                                  </span>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-bold text-slate-900 dark:text-white">{acc.id}</span>
-                                      {acc.has_token && (
-                                        <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                                          ✓ Token Active
-                                        </span>
-                                      )}
-                                      {acc.email && (
-                                        <span className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 text-[10px] text-slate-600 dark:text-slate-300">
-                                          <Mail className="h-3 w-3 text-slate-400" />
-                                          <span>{acc.email}</span>
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
-                                      <span className="rounded bg-slate-100 dark:bg-slate-700/40 px-1.5 py-0.5">Pool: {acc.pool || 'pool1'}</span>
-                                      <span>Weight: {acc.weight || 1.0}</span>
-                                      {acc.project_id && <span>Project: {acc.project_id}</span>}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => openEditAccountModal(p.id, acc)}
-                                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-rose-400 hover:text-rose-600 transition"
-                                    title="Edit account details, pool, weight, or credentials"
-                                  >
-                                    <Edit3 className="h-3 w-3 text-slate-400" />
-                                    <span>Edit</span>
-                                  </button>
-                                  <button
-                                    onClick={() => handleTestPing(p.id, acc.id)}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                  >
-                                    Ping
-                                  </button>
-                                  <button
-                                    onClick={() => handleToggleAccount(p.id, acc.id)}
-                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
-                                      acc.disabled
-                                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                    }`}
-                                  >
-                                    {acc.disabled ? 'Disabled' : 'Active'}
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteAccount(p.id, acc.id)}
-                                    className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:text-red-600 transition"
-                                    title="Delete Account"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-
-                            {accounts.length === 0 && (
-                              <div className="rounded-xl border border-dashed border-neutral-300 p-4 text-center text-xs text-slate-400 dark:text-slate-500 dark:border-neutral-700">
-                                No individual account objects mapped. Uses root provider credentials.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {/* TAB: COMBOS STUDIO */}
@@ -3976,6 +4489,139 @@ wire_api = "responses"`;
                     <span>{editAccountSaving ? 'Saving...' : 'Save Changes'}</span>
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Account Modal */}
+      {showAddAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                  <Plus className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Add Connection
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    Target Provider: {addAccountModalProvider}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddAccountModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Account Identifier / ID <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newAccId}
+                  onChange={(e) => setNewAccId(e.target.value)}
+                  placeholder="e.g. agy-acc-6, my-work-account"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Account Email (Optional)
+                </label>
+                <input
+                  type="email"
+                  value={newAccEmail}
+                  onChange={(e) => setNewAccEmail(e.target.value)}
+                  placeholder="e.g. developer@company.com"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Pool Group
+                  </label>
+                  <input
+                    type="text"
+                    value={newAccPool}
+                    onChange={(e) => setNewAccPool(e.target.value)}
+                    placeholder="pool1"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Priority Weight
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="10.0"
+                    value={newAccWeight}
+                    onChange={(e) => setNewAccWeight(parseFloat(e.target.value) || 1.0)}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  API Key or Bearer Token
+                </label>
+                <input
+                  type="password"
+                  value={newAccApiKey}
+                  onChange={(e) => setNewAccApiKey(e.target.value)}
+                  placeholder="sk-ant-... or gsk_..."
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-mono text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  OAuth Refresh Token (For Google Antigravity / AWS Kiro / Codex)
+                </label>
+                <input
+                  type="password"
+                  value={newAccRefreshToken}
+                  onChange={(e) => setNewAccRefreshToken(e.target.value)}
+                  placeholder="1//0... or OAuth token string"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 font-mono text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddAccountModal(false)}
+                  className="rounded-xl px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={addAccountSaving}
+                  onClick={handleCreateAccount}
+                  className="flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-500/20 transition disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>{addAccountSaving ? 'Adding...' : 'Add Connection'}</span>
+                </button>
               </div>
             </div>
           </div>

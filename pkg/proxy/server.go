@@ -5438,6 +5438,7 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 			Status: status,
 			Details: map[string]interface{}{
 				"type":           p.Type,
+				"strategy":       p.Strategy,
 				"accounts_count": len(p.Accounts),
 				"accounts":       accList,
 				"base_url":       p.BaseURL,
