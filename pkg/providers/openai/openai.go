@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,22 @@ func (p *Provider) SetAccountKey(accID, apiKey string) {
 		p.accountKeys = make(map[string]string)
 	}
 	p.accountKeys[accID] = apiKey
+}
+
+// ValidateBaseURL checks against SSRF vulnerabilities (e.g. cloud metadata IMDS)
+func ValidateBaseURL(rawURL string) error {
+	if rawURL == "" {
+		return nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid baseURL URL: %w", err)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "169.254.169.254" || strings.HasPrefix(host, "169.254.") || host == "metadata.google.internal" || host == "100.100.100.200" {
+		return fmt.Errorf("SSRF protection: cloud metadata endpoint %s is blocked", host)
+	}
+	return nil
 }
 
 func NewProvider(id, baseURL, apiKey string, headers map[string]string) *Provider {
@@ -143,6 +160,9 @@ func (p *Provider) TestAccount(ctx context.Context, accID string) error {
 
 // TestAPIKey checks if an API key / endpoint is reachable and authenticates.
 func TestAPIKey(ctx context.Context, baseURL, apiKey string, headers map[string]string) error {
+	if err := ValidateBaseURL(baseURL); err != nil {
+		return err
+	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	modelsURL := baseURL + "/models"
 
@@ -209,6 +229,9 @@ func TestAPIKey(ctx context.Context, baseURL, apiKey string, headers map[string]
 
 // FetchModelsDirect retrieves model IDs directly from /models.
 func FetchModelsDirect(ctx context.Context, baseURL, apiKey string, headers map[string]string) ([]string, error) {
+	if err := ValidateBaseURL(baseURL); err != nil {
+		return nil, err
+	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	modelsURL := baseURL + "/models"
 

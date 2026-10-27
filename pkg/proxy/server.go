@@ -2236,6 +2236,12 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 	if req.Type == "" {
 		req.Type = "openai"
 	}
+	if req.BaseURL != "" {
+		if err := openai.ValidateBaseURL(req.BaseURL); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 
 	home, _ := os.UserHomeDir()
 	cfgPath := s.cfgPath
