@@ -3456,10 +3456,23 @@ func (s *Server) handleTestAllAccounts(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	passed := 0
+	failed := 0
+	for _, res := range results {
+		if res.Status == "active" {
+			passed++
+		} else {
+			failed++
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
 		"results": results,
+		"passed":  passed,
+		"failed":  failed,
+		"total":   len(results),
 	})
 }
 

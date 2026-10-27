@@ -204,6 +204,15 @@ export default function GoRouteDashboard() {
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, boolean>>({});
   const [reorderMode, setReorderMode] = useState(false);
 
+  // Batch Test Results Modal State
+  const [batchTestModalData, setBatchTestModalData] = useState<{
+    providerId: string;
+    results: Array<{ id: string; status: string; latency_ms: number; error?: string }>;
+    passed: number;
+    failed: number;
+    total: number;
+  } | null>(null);
+
   // Add Account Modal State
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [addAccountModalProvider, setAddAccountModalProvider] = useState('');
@@ -652,7 +661,14 @@ wire_api = "responses"`;
           latMap[item.id] = item.latency_ms || 24;
         }
         setAccountLatencies(prev => ({ ...prev, ...latMap }));
-        showToast(`Tested ${res.results.length} accounts`);
+        setBatchTestModalData({
+          providerId,
+          results: res.results,
+          passed: res.passed ?? res.results.filter((r: any) => r.status === 'active').length,
+          failed: res.failed ?? res.results.filter((r: any) => r.status !== 'active').length,
+          total: res.total ?? res.results.length,
+        });
+        showToast(`Tested ${res.results.length} accounts: ${res.passed ?? res.results.length} active`);
       } else {
         showToast('All accounts tested');
       }
@@ -4621,6 +4637,99 @@ wire_api = "responses"`;
                 >
                   <Plus className="h-4 w-4" />
                   <span>{addAccountSaving ? 'Adding...' : 'Add Connection'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Test Results Modal (OmniRoute parity) */}
+      {batchTestModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Batch Health Test Results
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    Provider: {batchTestModalData.providerId}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBatchTestModalData(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Summary pills */}
+              <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800 text-xs font-mono">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Total: {batchTestModalData.total}
+                </span>
+                <span className="rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 font-bold">
+                  {batchTestModalData.passed} Passed
+                </span>
+                {batchTestModalData.failed > 0 && (
+                  <span className="rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 px-2 py-0.5 font-bold">
+                    {batchTestModalData.failed} Failed
+                  </span>
+                )}
+              </div>
+
+              {/* Account list */}
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {batchTestModalData.results.map((res, idx) => (
+                  <div
+                    key={res.id || idx}
+                    className="flex items-center justify-between p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-xs"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className={`h-2 w-2 rounded-full ${res.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <span className="font-mono font-medium text-slate-900 dark:text-white">
+                        {res.id}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {res.error ? (
+                        <span className="font-mono text-[11px] text-rose-500 max-w-[200px] truncate" title={res.error}>
+                          {res.error}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-[11px] text-emerald-500 font-semibold">
+                          {res.latency_ms}ms
+                        </span>
+                      )}
+                      <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase ${
+                        res.status === 'active'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                      }`}>
+                        {res.status === 'active' ? 'Passed' : 'Failed'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchTestModalData(null)}
+                  className="rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2 text-xs font-semibold hover:opacity-90 transition"
+                >
+                  Done
                 </button>
               </div>
             </div>
