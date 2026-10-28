@@ -32,10 +32,6 @@
   <a href="#contributing">Contributing</a>
 </p>
 
-<p align="center">
-  <img src="./assets/dashboard-preview.png" alt="GoRoute Real-time Control Center" width="880" />
-</p>
-
 ---
 
 ## Overview
