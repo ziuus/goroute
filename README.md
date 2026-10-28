@@ -1,16 +1,40 @@
-# GoRoute
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/logo-light.png">
+    <img src="./assets/logo.png" alt="GoRoute" width="460" />
+  </picture>
+</p>
 
-**High-Performance AI Gateway & Multi-Provider Router**  
-*Sub-millisecond routing • < 5 MB RAM footprint • Go core with Rust SIMD acceleration • 330+ Providers*
+<p align="center">
+  <strong>High-Performance AI Gateway & Multi-Account Router for Coding Agents</strong><br />
+  Sub-millisecond routing &bull; &lt; 5 MB RAM footprint &bull; Go core with Rust SIMD acceleration &bull; 330+ Providers
+</p>
 
-[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
-[![Engine](https://img.shields.io/badge/Engine-Go%20%2B%20Rust%20Fast-dea584?style=flat-square&logo=rust)](crates/goroute-fast)
-[![NPM Version](https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/goroute)
-[![Memory Footprint](https://img.shields.io/badge/Memory-3.8MB%20RAM-00C853?style=flat-square)](#benchmarks)
-[![Latency](https://img.shields.io/badge/Latency-0.86ms-6366f1?style=flat-square)](#benchmarks)
-[![License](https://img.shields.io/badge/License-MIT-3DA639?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go" alt="Go Version" /></a>
+  <a href="crates/goroute-fast"><img src="https://img.shields.io/badge/Engine-Go%20%2B%20Rust%20Fast-dea584?style=flat-square&logo=rust" alt="Engine" /></a>
+  <a href="https://www.npmjs.com/package/goroute"><img src="https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837" alt="NPM Version" /></a>
+  <a href="#benchmarks"><img src="https://img.shields.io/badge/Memory-4.7MB%20RAM-00C853?style=flat-square" alt="Memory Footprint" /></a>
+  <a href="#benchmarks"><img src="https://img.shields.io/badge/Latency-0.86ms-6366f1?style=flat-square" alt="Latency" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3DA639?style=flat-square" alt="License" /></a>
+</p>
 
-[Overview](#overview) • [Installation](#installation) • [Quickstart](#quickstart) • [Usage Examples](#usage-examples) • [Provider Management](#provider-management) • [Combos & Failover](#combos--failover) • [Benchmarks](#benchmarks) • [Contributing](#contributing)
+<p align="center">
+  <a href="#overview">Overview</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
+  <a href="#web-portal">Web Portal</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#quickstart">Quickstart</a> &bull;
+  <a href="#usage-examples">Usage Examples</a> &bull;
+  <a href="#combos--failover">Combos & Failover</a> &bull;
+  <a href="#benchmarks">Benchmarks</a> &bull;
+  <a href="#contributing">Contributing</a>
+</p>
+
+<p align="center">
+  <img src="./assets/dashboard-preview.png" alt="GoRoute Real-time Control Center" width="880" />
+</p>
 
 ---
 
@@ -27,8 +51,60 @@ Traditional proxy gateways rely on heavyweight Python or Node.js runtimes consum
 - **Universal Protocol Translation**: Transparently bridges OpenAI Chat Completions, Anthropic Messages (`/v1/messages`), and Google Gemini formats.
 - **Multi-Account OAuth Pooling**: Seamless round-robin and priority failover across multiple Google Antigravity, AWS Q Developer / Kiro, and OpenAI Codex accounts.
 - **Dedicated Provider Connection Studio**: In-dashboard studio to test pings, reorder priority, toggle active status, and audit cooldowns.
-- **1-Click OmniRoute Vault Sync**: Decrypts and imports existing OmniRoute SQLite vaults in under a second (`goroute sync omniroute`).
+- **1-Click OmniRoute Vault Sync**: Decrypts and imports existing OmniRoute SQLite vaults in under a second (`goroute sync omniroute` or via Web UI).
+- **25+ Zero-Config Provider Templates**: Pre-filled Base URLs for DeepSeek, OpenAI, Groq, Mistral, Anthropic, Together AI, and more—paste API keys and start instantly.
 - **Zero External Dependencies**: Single standalone executable without requiring Docker, Python, or Node.js.
+
+---
+
+## Architecture
+
+```
+                      ┌──────────────────────────────────────┐
+                      │    Coding Agents & Client Tools      │
+                      │  Claude Code • OpenCode • Cursor     │
+                      └──────────────────┬───────────────────┘
+                                         │ HTTP / SSE (:8128)
+                                         ▼
+                      ┌──────────────────────────────────────┐
+                      │               GoRoute                │
+                      │                                      │
+                      │  ┌────────────────────────────────┐  │
+                      │  │  Universal Protocol Translator │  │
+                      │  │  OpenAI ↔ Anthropic ↔ Gemini   │  │
+                      │  └────────────────┬───────────────┘  │
+                      │                   ▼                  │
+                      │  ┌────────────────────────────────┐  │
+                      │  │ Recursive Combos & Cascades    │  │
+                      │  │ Round-Robin • Priority Weight  │  │
+                      │  └────────────────┬───────────────┘  │
+                      │                   ▼                  │
+                      │  ┌────────────────────────────────┐  │
+                      │  │ Circuit Breakers & Cooldowns   │  │
+                      │  │ Adaptive Lockout • Idempotency │  │
+                      │  └────────────────┬───────────────┘  │
+                      └──────────────────┼───────────────────┘
+                                         │
+        ┌────────────────────────────────┼────────────────────────────────┐
+        ▼                                ▼                                ▼
+┌───────────────┐                ┌───────────────┐                ┌───────────────┐
+│ Google Cloud  │                │ AWS Q / Kiro  │                │ Frontier Labs │
+│ Antigravity   │                │ Multi-Account │                │ Anthropic     │
+│ OAuth Pool    │                │ Builder ID    │                │ OpenAI / Groq │
+└───────────────┘                └───────────────┘                └───────────────┘
+```
+
+---
+
+## Web Portal
+
+GoRoute includes an embedded, high-performance web dashboard accessible at **`http://localhost:8128/`**. The dashboard compiles directly into the Go binary via `//go:embed` for zero-configuration access:
+
+- **Providers Hub**: Connect accounts via Google Cloud Code OAuth or 25+ auto-configured templates (DeepSeek, OpenAI, Groq, Mistral, Together AI). Base URLs are populated automatically—simply enter your API key.
+- **Combos Studio**: Build recursive failover cascades (e.g., `frontier` or `claude-models`) with drag-and-drop model ordering, weight controls, and live health verification.
+- **Agent Fleet**: One-click setup for Claude Code, Cursor, Codex, OpenCode, and Cline with automatic configuration file generation and environment exports.
+- **OmniRoute Sync**: One-click migration button under Providers that scans and imports existing credentials, account pools, and combos from OmniRoute SQLite vaults.
+- **Interactive Playground**: Real-time browser chat interface with live token counts, TTFT (time-to-first-token) measurement, and streaming SSE metrics.
 
 ---
 
@@ -68,15 +144,10 @@ To enable 24/7 background autostart on system boot:
 goroute autostart enable
 ```
 
-### 2. Access the Web Dashboard
-Open **`http://localhost:8128/`** in your browser. Everything can be managed directly from the Web Portal:
-- **Providers**: Pre-configured templates (DeepSeek, OpenAI, Groq, Anthropic, Gemini, Mistral) auto-fill Base URLs—just paste your API key or click Google OAuth for Antigravity.
-- **Combos**: Build multi-account failover cascades (e.g., `frontier` or `claude-models`) with drag-and-drop ordering.
-- **Agent Fleet**: One-click setup for Claude Code, Cursor, Codex, and OpenCode with automatic profile generation.
-- **OmniRoute Sync**: One-click import button under Providers to migrate credentials, accounts, and combos from OmniRoute.
-- **Playground**: Real-time browser chat interface with live token counts and streaming SSE metrics.
+### 2. Connect Upstream Providers
 
-### 3. Connect Upstream Accounts (CLI or Web Portal)
+You can connect providers via the **Web Portal at `http://localhost:8128/`** or via the CLI:
+
 ```bash
 # Connect Google Antigravity accounts (Google Cloud Code OAuth)
 goroute auth login antigravity
@@ -84,11 +155,18 @@ goroute auth login antigravity
 # Connect AWS Q Developer / Kiro accounts
 goroute auth import kiro
 
-# Add API key providers
+# Add API key providers (Base URLs automatically resolved)
 goroute provider add anthropic --key sk-ant-...
 goroute provider add deepseek --key sk-...
 goroute provider add groq --key gsk_...
 ```
+
+### 3. Sync Existing OmniRoute Vault (Optional)
+If migrating from an existing OmniRoute installation:
+```bash
+goroute sync omniroute
+```
+This automatically decrypts and imports all accounts, provider credentials, and combo definitions without data loss.
 
 ---
 
@@ -165,7 +243,7 @@ const message = await client.messages.create({
 console.log(message.content[0]);
 ```
 
-### 5. Automated Coding Agent Setup
+### 5. Automated Coding Agent Fleet Setup
 Configure local coding agents to route through GoRoute with one command:
 ```bash
 goroute setup all        # Auto-configures all 35 supported developer tools
@@ -179,7 +257,7 @@ goroute setup codex      # Configure OpenAI Codex CLI (~/.codex/config.toml)
 
 ## Provider Management
 
-GoRoute includes built-in presets for **330+ AI providers**:
+GoRoute includes built-in presets and auto-configured base URLs for **330+ AI providers**:
 
 | Provider Category | Supported Platforms | Configuration Method |
 | :--- | :--- | :--- |
@@ -192,28 +270,35 @@ GoRoute includes built-in presets for **330+ AI providers**:
 
 ## Combos & Failover
 
-Combos aggregate multiple accounts and models under a single virtual model name. If an upstream account encounters rate limits (HTTP 429), token exhaustion, or outages, GoRoute transparently fails over to the next healthy account in sub-milliseconds:
+Combos aggregate multiple accounts and models under a single virtual model name. If an upstream account encounters rate limits (HTTP 429), token exhaustion, or outages, GoRoute transparently fails over to the next healthy account in sub-milliseconds. Combos also support recursive nesting:
 
 ```yaml
 # ~/.goroute/config.yaml
 combos:
-  - name: claude
+  - name: frontier
+    strategy: failover
+    targets:
+      - combo: claude-models       # Recursive composite combo
+      - combo: deepseek
+      - combo: gpt
+
+  - name: claude-models
     strategy: failover
     targets:
       - provider_id: antigravity
         model: claude-sonnet-4-6
-      - provider_id: kiro
-        model: claude-sonnet-4.5
-      - provider_id: kiro
-        model: claude-haiku-4.5
+      - provider_id: antigravity
+        model: claude-opus-4-6
+      - provider_id: openai-compatible
+        model: claude-3-7-sonnet
 
   - name: auto
     strategy: failover
     targets:
       - provider_id: antigravity
         model: gemini-3.8-flash-high
-      - provider_id: kiro
-        model: deepseek-3.2
+      - provider_id: openai-compatible
+        model: deepseek-chat
       - provider_id: groq
         model: llama-3.3-70b-versatile
 ```
@@ -222,7 +307,7 @@ Target the virtual combo as a standard model name:
 ```bash
 curl -s http://localhost:8128/v1/chat/completions \
   -H "Authorization: Bearer goroute" \
-  -d '{"model": "claude", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "frontier", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ---
@@ -247,13 +332,15 @@ Benchmarked on Linux x86_64 under 500 concurrent streaming requests:
 We welcome community contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for local environment setup, testing guidelines, and pull request conventions.
 
 ```bash
-# Clone and run unit tests
+# Clone repository
 git clone https://github.com/ziuus/goroute.git
 cd goroute
-make test
 
-# Build binary
-make build
+# Run full test suite with race detector
+go test -v -race ./...
+
+# Build daemon binary
+go build -o bin/goroute ./cmd/goroute
 ```
 
 ---
