@@ -898,7 +898,7 @@ wire_api = "responses"`;
         body: JSON.stringify(customOpts || {}),
       }).then(r => r.json());
       if (res.status === 'ok' || res.success) {
-        showToast(`✅ ${toolId} configured cleanly!`);
+        showToast(`${toolId} configured cleanly!`);
         setConfiguringAgent(null);
         fetchAllData();
       } else {
@@ -4608,11 +4608,11 @@ wire_api = "responses"`;
                       }}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-xs focus:border-rose-500 focus:outline-hidden dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
                     >
-                      <option value="auto">⚡ Auto (Smart Model Affinity Failover)</option>
-                      <option value="antigravity">🌐 Antigravity (Google Cloud Vertex AI)</option>
-                      <option value="kiro">⚡ Kiro (AWS Bedrock CodeWhisperer)</option>
-                      <option value="codex">🤖 Codex (OpenAI ChatGPT Core)</option>
-                      <option value="combo">🔀 Combos (Multi-Provider Failover Pools)</option>
+                      <option value="auto">Auto (Smart Model Affinity Failover)</option>
+                      <option value="antigravity">Antigravity (Google Cloud Vertex AI)</option>
+                      <option value="kiro">Kiro (AWS Bedrock CodeWhisperer)</option>
+                      <option value="codex">Codex (OpenAI ChatGPT Core)</option>
+                      <option value="combo">Combos (Multi-Provider Failover Pools)</option>
                     </select>
                   </div>
 
@@ -4632,7 +4632,7 @@ wire_api = "responses"`;
                       <optgroup label="Active Failover Combos">
                         {combos.map(c => (
                           <option key={c.name} value={c.name}>
-                            ⚡ {c.name} ({c.targets?.length || 0} targets)
+                            [COMBO] {c.name} ({c.targets?.length || 0} targets)
                           </option>
                         ))}
                       </optgroup>
@@ -4717,7 +4717,7 @@ wire_api = "responses"`;
                                 : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-slate-300'
                             }`}
                           >
-                            {isCombo && <span>⚡</span>}
+                            {isCombo && <span className="text-[10px] uppercase font-mono px-1 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400">Combo</span>}
                             <span>{m}</span>
                           </button>
                         );

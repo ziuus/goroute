@@ -69,9 +69,14 @@ goroute autostart enable
 ```
 
 ### 2. Access the Web Dashboard
-Open **`http://localhost:8128/`** in your browser to view the real-time topology, rolling quotas, agent fleet status, and provider connection studio.
+Open **`http://localhost:8128/`** in your browser. Everything can be managed directly from the Web Portal:
+- **Providers**: Pre-configured templates (DeepSeek, OpenAI, Groq, Anthropic, Gemini, Mistral) auto-fill Base URLs—just paste your API key or click Google OAuth for Antigravity.
+- **Combos**: Build multi-account failover cascades (e.g., `frontier` or `claude-models`) with drag-and-drop ordering.
+- **Agent Fleet**: One-click setup for Claude Code, Cursor, Codex, and OpenCode with automatic profile generation.
+- **OmniRoute Sync**: One-click import button under Providers to migrate credentials, accounts, and combos from OmniRoute.
+- **Playground**: Real-time browser chat interface with live token counts and streaming SSE metrics.
 
-### 3. Connect Upstream Accounts
+### 3. Connect Upstream Accounts (CLI or Web Portal)
 ```bash
 # Connect Google Antigravity accounts (Google Cloud Code OAuth)
 goroute auth login antigravity
