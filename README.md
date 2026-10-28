@@ -14,6 +14,7 @@
 <p align="center">
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go" alt="Go Version" /></a>
   <a href="crates/goroute-fast"><img src="https://img.shields.io/badge/Engine-Go%20%2B%20Rust%20Fast-dea584?style=flat-square&logo=rust" alt="Engine" /></a>
+  <a href="https://goroute-website.vercel.app"><img src="https://img.shields.io/badge/Website-Live%20on%20Vercel-e24b38?style=flat-square" alt="Website" /></a>
   <a href="https://www.npmjs.com/package/goroute"><img src="https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837" alt="NPM Version" /></a>
   <a href="#benchmarks"><img src="https://img.shields.io/badge/Memory-4.7MB%20RAM-00C853?style=flat-square" alt="Memory Footprint" /></a>
   <a href="#benchmarks"><img src="https://img.shields.io/badge/Latency-0.86ms-6366f1?style=flat-square" alt="Latency" /></a>
@@ -21,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="https://goroute-website.vercel.app">Official Website</a> &bull;
   <a href="#overview">Overview</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
   <a href="#web-portal">Web Portal</a> &bull;
