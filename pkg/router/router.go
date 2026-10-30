@@ -331,31 +331,23 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 		}
 	}
 
-	// 2. Add standard curated aliases and gateway virtual models
-	standardAliases := []string{
-		"gemini-flash",
-		"gemini-flash-lite",
-		"gemini-2.5-flash",
-		"gemini-3.8-flash-high",
-		"claude-sonnet-ag",
-		"opus",
-		"haiku",
-		"sonnet",
-		"claude-sonnet-4.5",
-		"claude-opus-5.5",
-		"claude-3-7-sonnet",
-		"claude-3-5-sonnet",
-		"gpt-4o",
-		"gpt-4o-mini",
-	}
-	for _, alias := range standardAliases {
-		if !seen[alias] {
-			seen[alias] = true
-			models = append(models, providers.ModelInfo{
-				ID:      alias,
-				Object:  "model",
-				OwnedBy: "goroute",
-			})
+	// 2. Add standard curated aliases if requested or as fallback when no combos exist
+	if len(models) == 0 || os.Getenv("EXPOSE_ALL_UPSTREAM_MODELS") == "true" {
+		standardAliases := []string{
+			"claude-3-7-sonnet",
+			"claude-3-5-sonnet",
+			"gpt-4o",
+			"gpt-4o-mini",
+		}
+		for _, alias := range standardAliases {
+			if !seen[alias] {
+				seen[alias] = true
+				models = append(models, providers.ModelInfo{
+					ID:      alias,
+					Object:  "model",
+					OwnedBy: "goroute",
+				})
+			}
 		}
 	}
 
@@ -716,16 +708,18 @@ func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *p
 		if errReason == "" {
 			errReason = fmt.Sprintf("HTTP %d", statusCode)
 		}
-		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d (%s), cooling down and trying next target...", target.ProviderID, target.Model, statusCode, errReason)
+		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d (%s), trying next target...", target.ProviderID, target.Model, statusCode, errReason)
 
-		// For 429 quota exhaustion or 400 schema mismatches, mark cooldown and try next target
-		cooldownDuration := 10 * time.Minute
-		if statusCode == 400 {
-			cooldownDuration = 3 * time.Minute
-		} else if statusCode == 429 && resilience.IsDailyQuotaExhausted(errReason) {
-			cooldownDuration = 1 * time.Hour
+		// Cooldown policy: only mark cooldown on rate limit (429) or upstream server outages (500/502/503/504).
+		// Client payload errors (400 Bad Request, 422 Unprocessable) do NOT mark cooldown, preventing
+		// invalid client inputs from locking out healthy upstream targets for all subsequent traffic.
+		if statusCode != 400 && statusCode != 422 {
+			cooldownDuration := 10 * time.Minute
+			if statusCode == 429 && resilience.IsDailyQuotaExhausted(errReason) {
+				cooldownDuration = 1 * time.Hour
+			}
+			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, errReason, cooldownDuration)
 		}
-		resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, errReason, cooldownDuration)
 		lastStatus = statusCode
 		lastErr = fmt.Errorf("target %s/%s returned HTTP %d: %s", target.ProviderID, target.Model, statusCode, errReason)
 		// Continue cascade loop to next target!

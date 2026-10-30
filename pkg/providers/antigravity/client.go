@@ -148,7 +148,22 @@ type geminiInlineData struct {
 type geminiFunctionCall struct {
 	ID   string                 `json:"id,omitempty"`
 	Name string                 `json:"name"`
-	Args map[string]interface{} `json:"args,omitempty"`
+	Args map[string]interface{} `json:"args"`
+}
+
+func (g geminiFunctionCall) MarshalJSON() ([]byte, error) {
+	type Alias geminiFunctionCall
+	args := g.Args
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	return json.Marshal(&struct {
+		Alias
+		Args map[string]interface{} `json:"args"`
+	}{
+		Alias: Alias(g),
+		Args:  args,
+	})
 }
 
 type geminiFunctionResponse struct {

@@ -1168,37 +1168,47 @@ wire_api = "responses"`;
 
           {/* Navigation Groups */}
           <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4 custom-scrollbar">
-            {/* HOME */}
+            {/* CORE GATEWAY */}
             <div>
               {!sidebarCollapsed && (
                 <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  Home
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
-                className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
-                  activeTab === 'overview' && !selectedProviderStudio
-                    ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
-                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
-                } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                title="Home Dashboard"
-              >
-                <Activity className="h-4 w-4 shrink-0 text-sky-500" />
-                {!sidebarCollapsed && <span>Dashboard Overview</span>}
-              </button>
-            </div>
-
-            {/* PINNED */}
-            <div>
-              {!sidebarCollapsed && (
-                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>Pinned</span>
-                  <Flame className="h-2.5 w-2.5 text-rose-500" />
+                  Core Gateway
                 </div>
               )}
               <div className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
+                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'overview' && !selectedProviderStudio
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="System Dashboard"
+                >
+                  <Activity className="h-4 w-4 shrink-0 text-rose-500" />
+                  {!sidebarCollapsed && <span>Dashboard</span>}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('combos'); }}
+                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
+                    activeTab === 'combos'
+                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
+                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                  title="Routing Cascades"
+                >
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    <Layers className="h-4 w-4 shrink-0 text-purple-500" />
+                    {!sidebarCollapsed && <span>Routing Cascades</span>}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-[10px] text-slate-400">{combos.length}</span>
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={() => { setSelectedProviderStudio(null); setActiveTab('providers'); }}
@@ -1207,11 +1217,11 @@ wire_api = "responses"`;
                       ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
                   } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Providers"
+                  title="Upstream Pools"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <Server className="h-4 w-4 shrink-0 text-indigo-500" />
-                    {!sidebarCollapsed && <span>Providers</span>}
+                    {!sidebarCollapsed && <span>Upstream Pools</span>}
                   </div>
                   {!sidebarCollapsed && (
                     <span className="font-mono text-[10px] text-slate-400">{providers.length}</span>
@@ -1226,177 +1236,22 @@ wire_api = "responses"`;
                       ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
                   } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Provider Quota"
+                  title="Quota Health"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <Flame className="h-4 w-4 shrink-0 text-amber-500" />
-                    {!sidebarCollapsed && <span>Provider Quota</span>}
+                    {!sidebarCollapsed && <span>Quota Health</span>}
                   </div>
                 </button>
               </div>
             </div>
 
-            {/* AI GATEWAY */}
+            {/* AGENTS & TRAFFIC */}
             <div>
               {!sidebarCollapsed && (
                 <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>AI Gateway</span>
-                  <Globe className="h-2.5 w-2.5 text-cyan-500" />
-                </div>
-              )}
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
-                    sidebarCollapsed ? 'justify-center' : ''
-                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
-                  title="Endpoints"
-                >
-                  <Radio className="h-4 w-4 shrink-0 text-sky-400" />
-                  {!sidebarCollapsed && (
-                    <div className="flex flex-col text-left">
-                      <span>Endpoints</span>
-                      <span className="text-[10px] font-normal text-slate-400">/v1/chat, /v1/messages</span>
-                    </div>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('settings'); }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
-                    sidebarCollapsed ? 'justify-center' : ''
-                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
-                  title="API Keys"
-                >
-                  <Key className="h-4 w-4 shrink-0 text-amber-400" />
-                  {!sidebarCollapsed && (
-                    <div className="flex flex-col text-left">
-                      <span>API Keys</span>
-                      <span className="text-[10px] font-normal text-slate-400">Virtual keys & quotas</span>
-                    </div>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('providers'); }}
-                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
-                    activeTab === 'providers' && !selectedProviderStudio
-                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
-                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Providers"
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden">
-                    <Server className="h-4 w-4 shrink-0 text-indigo-400" />
-                    {!sidebarCollapsed && (
-                      <div className="flex flex-col text-left">
-                        <span>Providers</span>
-                        <span className="text-[10px] font-normal text-slate-400">150+ Upstreams</span>
-                      </div>
-                    )}
-                  </div>
-                  {!sidebarCollapsed && (
-                    <span className="font-mono text-[10px] text-slate-400">{providers.length}</span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('combos'); }}
-                  className={`flex w-full items-center justify-between rounded-lg p-2 text-xs font-semibold transition ${
-                    activeTab === 'combos'
-                      ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
-                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Combos"
-                >
-                  <div className="flex items-center gap-2.5 overflow-hidden">
-                    <Layers className="h-4 w-4 shrink-0 text-purple-400" />
-                    {!sidebarCollapsed && (
-                      <div className="flex flex-col text-left">
-                        <span>Combos</span>
-                        <span className="text-[10px] font-normal text-slate-400">Failover cascades</span>
-                      </div>
-                    )}
-                  </div>
-                  {!sidebarCollapsed && (
-                    <span className="font-mono text-[10px] text-slate-400">{combos.length}</span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('combos'); }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
-                    sidebarCollapsed ? 'justify-center' : ''
-                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
-                  title="Combo Studio"
-                >
-                  <Sliders className="h-4 w-4 shrink-0 text-fuchsia-400" />
-                  {!sidebarCollapsed && (
-                    <div className="flex flex-col text-left">
-                      <span>Combo Studio</span>
-                      <span className="text-[10px] font-normal text-slate-400">Live routing cascade</span>
-                    </div>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* PIPELINE ENGINE */}
-            <div>
-              {!sidebarCollapsed && (
-                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>Pipeline Engine</span>
-                  <Filter className="h-2.5 w-2.5 text-teal-500" />
-                </div>
-              )}
-              <div className="space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('settings'); }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
-                    sidebarCollapsed ? 'justify-center' : ''
-                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
-                  title="Compression Settings"
-                >
-                  <Settings className="h-4 w-4 shrink-0 text-teal-400" />
-                  {!sidebarCollapsed && (
-                    <div className="flex flex-col text-left">
-                      <span>Compression...</span>
-                      <span className="text-[10px] font-normal text-slate-400">Global defaults</span>
-                    </div>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setSelectedProviderStudio(null); setActiveTab('overview'); }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg p-2 text-xs font-semibold transition ${
-                    sidebarCollapsed ? 'justify-center' : ''
-                  } text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white`}
-                  title="Engine Combos"
-                >
-                  <Filter className="h-4 w-4 shrink-0 text-emerald-400" />
-                  {!sidebarCollapsed && (
-                    <div className="flex flex-col text-left">
-                      <span>Engine Comb...</span>
-                      <span className="text-[10px] font-normal text-slate-400">60 RTK Filters</span>
-                    </div>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* TOOLS & FLEET */}
-            <div>
-              {!sidebarCollapsed && (
-                <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>Tools & Fleet</span>
-                  <Terminal className="h-2.5 w-2.5 text-yellow-500" />
+                  <span>Agents & Traffic</span>
+                  <Terminal className="h-2.5 w-2.5 text-cyan-500" />
                 </div>
               )}
               <div className="space-y-0.5">
@@ -1411,7 +1266,7 @@ wire_api = "responses"`;
                   title="Agent Fleet"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
-                    <Terminal className="h-4 w-4 shrink-0 text-yellow-400" />
+                    <Terminal className="h-4 w-4 shrink-0 text-emerald-400" />
                     {!sidebarCollapsed && <span>Agent Fleet</span>}
                   </div>
                   {!sidebarCollapsed && (
@@ -1430,7 +1285,7 @@ wire_api = "responses"`;
                   title="Traffic Inspector"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
-                    <Clock className="h-4 w-4 shrink-0 text-slate-400" />
+                    <Clock className="h-4 w-4 shrink-0 text-sky-400" />
                     {!sidebarCollapsed && <span>Traffic Inspector</span>}
                   </div>
                   {!sidebarCollapsed && (
@@ -1454,12 +1309,12 @@ wire_api = "responses"`;
               </div>
             </div>
 
-            {/* CATALOG & RESILIENCE */}
+            {/* PLATFORM */}
             <div>
               {!sidebarCollapsed && (
                 <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>Catalog & Resilience</span>
-                  <Cpu className="h-2.5 w-2.5 text-blue-500" />
+                  <span>Platform</span>
+                  <Settings className="h-2.5 w-2.5 text-slate-400" />
                 </div>
               )}
               <div className="space-y-0.5">
@@ -1471,11 +1326,11 @@ wire_api = "responses"`;
                       ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
                   } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Model Catalog"
+                  title="Model Intelligence"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <Cpu className="h-4 w-4 shrink-0 text-blue-400" />
-                    {!sidebarCollapsed && <span>Model Catalog</span>}
+                    {!sidebarCollapsed && <span>Model Intelligence</span>}
                   </div>
                   {!sidebarCollapsed && (
                     <span className="font-mono text-[10px] text-slate-400">{catalog.length}</span>
@@ -1490,10 +1345,10 @@ wire_api = "responses"`;
                       ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
                   } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Settings"
+                  title="Settings & Sync"
                 >
                   <Settings className="h-4 w-4 shrink-0 text-slate-400" />
-                  {!sidebarCollapsed && <span>Settings</span>}
+                  {!sidebarCollapsed && <span>System & Sync</span>}
                 </button>
               </div>
             </div>
