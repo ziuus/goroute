@@ -209,6 +209,21 @@ func (r *Router) ResolveTarget(model string) (Target, bool) {
 			}
 		}
 	}
+	if strings.HasPrefix(model, "claude-") {
+		sub := strings.TrimPrefix(model, "claude-")
+		r.mu.RLock()
+		_, isSubCombo := r.combos[sub]
+		r.mu.RUnlock()
+		if isSubCombo {
+			model = sub
+		}
+	}
+	if strings.HasPrefix(model, "claude-") {
+		sub := strings.TrimPrefix(model, "claude-")
+		if _, ok := r.combos[sub]; ok {
+			model = sub
+		}
+	}
 
 	if combo, ok := r.combos[model]; ok && len(combo.Targets) > 0 {
 		return r.resolveComboTarget(combo, make(map[string]bool), 0)
@@ -344,21 +359,23 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 		}
 	}
 
-	// 3. Add provider direct models (e.g. antigravity/gemini-2.5-flash, kiro/claude-3-7-sonnet)
-	for _, p := range r.providers {
-		pCtx, pCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
-		pModels, err := p.Models(pCtx)
-		pCancel()
-		if err == nil {
-			for _, m := range pModels {
-				fullID := fmt.Sprintf("%s/%s", p.ID(), m.ID)
-				if !seen[fullID] {
-					seen[fullID] = true
-					models = append(models, providers.ModelInfo{
-						ID:      fullID,
-						Object:  "model",
-						OwnedBy: p.ID(),
-					})
+	// 3. Add provider direct models (only if EXPOSE_ALL_UPSTREAM_MODELS is set to avoid polluting CLI agent pickers)
+	if os.Getenv("EXPOSE_ALL_UPSTREAM_MODELS") == "true" {
+		for _, p := range r.providers {
+			pCtx, pCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			pModels, err := p.Models(pCtx)
+			pCancel()
+			if err == nil {
+				for _, m := range pModels {
+					fullID := fmt.Sprintf("%s/%s", p.ID(), m.ID)
+					if !seen[fullID] {
+						seen[fullID] = true
+						models = append(models, providers.ModelInfo{
+							ID:      fullID,
+							Object:  "model",
+							OwnedBy: p.ID(),
+						})
+					}
 				}
 			}
 		}
@@ -374,11 +391,20 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 	var ccMirrors []providers.ModelInfo
 	for name := range r.combos {
 		if !strings.HasPrefix(name, "claude") && !strings.HasPrefix(name, "anthropic") {
-			mirrorID := "claude/" + name
-			if !seen[mirrorID] {
-				seen[mirrorID] = true
+			mirrorSlash := "claude/" + name
+			if !seen[mirrorSlash] {
+				seen[mirrorSlash] = true
 				ccMirrors = append(ccMirrors, providers.ModelInfo{
-					ID:      mirrorID,
+					ID:      mirrorSlash,
+					Object:  "model",
+					OwnedBy: "goroute-combo",
+				})
+			}
+			mirrorDash := "claude-" + name
+			if !seen[mirrorDash] {
+				seen[mirrorDash] = true
+				ccMirrors = append(ccMirrors, providers.ModelInfo{
+					ID:      mirrorDash,
 					Object:  "model",
 					OwnedBy: "goroute-combo",
 				})
@@ -494,6 +520,15 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 			} else {
 				model = sub
 			}
+		}
+	}
+	if strings.HasPrefix(model, "claude-") {
+		sub := strings.TrimPrefix(model, "claude-")
+		r.mu.RLock()
+		_, isSubCombo := r.combos[sub]
+		r.mu.RUnlock()
+		if isSubCombo {
+			model = sub
 		}
 	}
 

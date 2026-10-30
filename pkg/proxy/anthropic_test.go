@@ -206,3 +206,49 @@ func TestSynthesizedSSE(t *testing.T) {
 		t.Errorf("expected [DONE] delimiter in SSE output, got: %s", output)
 	}
 }
+
+func TestTranslateOpenAIToAnthropicSSE_StreamingToolCalls(t *testing.T) {
+	// Simulate OpenAI SSE stream where chunk 1 provides ID + Name, and subsequent chunks provide argument fragments
+	openAISSE := `data: {"choices": [{"index": 0, "delta": {"role": "assistant", "content": null, "tool_calls": [{"index": 0, "id": "call_test_123", "type": "function", "function": {"name": "search_files", "arguments": ""}}]}, "finish_reason": null}]}
+
+data: {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\"query\":"}}]}, "finish_reason": null}]}
+
+data: {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "\"main.go\"}"}}]}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+`
+	var buf bytes.Buffer
+	translateOpenAIToAnthropicSSE(strings.NewReader(openAISSE), &buf, nil, "claude-test")
+
+	out := buf.String()
+	t.Logf("OUTPUT:\n%s", out)
+
+	// 1. Should have content_block_start with name "search_files" and id "call_test_123"
+	if !strings.Contains(out, `"name":"search_files"`) {
+		t.Errorf("expected tool name 'search_files', got:\n%s", out)
+	}
+	if !strings.Contains(out, `"id":"call_test_123"`) {
+		t.Errorf("expected tool id 'call_test_123', got:\n%s", out)
+	}
+
+	// 2. MUST NOT emit generic name: "tool"
+	if strings.Contains(out, `"name":"tool"`) {
+		t.Errorf("regression: emitted generic name 'tool':\n%s", out)
+	}
+
+	// 3. Count content_block_start occurrences - must be exactly 1
+	startCount := strings.Count(out, `"type":"content_block_start"`)
+	if startCount != 1 {
+		t.Errorf("expected exactly 1 content_block_start, got %d:\n%s", startCount, out)
+	}
+
+	// 4. Input json deltas should be streamed
+	if !strings.Contains(out, `main.go`) {
+		t.Errorf("expected arguments chunk with main.go, got:\n%s", out)
+	}
+
+	// 5. Must have stop_reason: "tool_use"
+	if !strings.Contains(out, `"stop_reason":"tool_use"`) {
+		t.Errorf("expected stop_reason 'tool_use', got:\n%s", out)
+	}
+}

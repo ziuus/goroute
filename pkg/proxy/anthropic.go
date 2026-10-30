@@ -370,6 +370,13 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type StreamToolCall struct {
+	ID           string
+	Name         string
+	BlockIndex   int
+	StartEmitted bool
+}
+
 func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http.Flusher, model string) {
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 
@@ -384,7 +391,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	inTextBlock := false
 	blockIndex := 0
 	stopReason := "end_turn"
-	seenTools := make(map[string]int)
+	seenTools := make(map[int]*StreamToolCall)
 	xmlParser := NewXmlStreamParser()
 
 	for scanner.Scan() {
@@ -488,34 +495,44 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 			if len(choice.Delta.ToolCalls) > 0 {
 				for _, tc := range choice.Delta.ToolCalls {
 					stopReason = "tool_use"
-					toolCallID := tc.ID
-					if toolCallID == "" {
-						toolCallID = fmt.Sprintf("toolu_%d", blockIndex)
+					toolState, exists := seenTools[tc.Index]
+					if !exists {
+						toolState = &StreamToolCall{
+							BlockIndex: -1,
+						}
+						seenTools[tc.Index] = toolState
 					}
 
-					toolBlockIdx, seen := seenTools[toolCallID]
-					if !seen {
+					if tc.ID != "" && toolState.ID == "" {
+						toolState.ID = tc.ID
+					}
+					if tc.Function.Name != "" && toolState.Name == "" {
+						toolState.Name = tc.Function.Name
+					}
+
+					if !toolState.StartEmitted && (toolState.Name != "" || tc.Function.Arguments != "") {
 						if inTextBlock {
 							fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
 							inTextBlock = false
 							blockIndex++
 						}
-						toolBlockIdx = blockIndex
-						seenTools[toolCallID] = toolBlockIdx
+						toolState.BlockIndex = blockIndex
 						blockIndex++
 
-						toolName := tc.Function.Name
-						if toolName == "" {
-							toolName = "tool"
+						if toolState.ID == "" {
+							toolState.ID = fmt.Sprintf("toolu_%d", toolState.BlockIndex)
+						}
+						if toolState.Name == "" {
+							toolState.Name = "tool"
 						}
 
 						toolStartJSON, _ := json.Marshal(map[string]interface{}{
 							"type":  "content_block_start",
-							"index": toolBlockIdx,
+							"index": toolState.BlockIndex,
 							"content_block": map[string]interface{}{
 								"type":  "tool_use",
-								"id":    toolCallID,
-								"name":  toolName,
+								"id":    toolState.ID,
+								"name":  toolState.Name,
 								"input": map[string]interface{}{},
 							},
 						})
@@ -523,12 +540,13 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 						if flusher != nil {
 							flusher.Flush()
 						}
+						toolState.StartEmitted = true
 					}
 
-					if tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
+					if toolState.StartEmitted && tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
 						argsJSON, _ := json.Marshal(map[string]interface{}{
 							"type":  "content_block_delta",
-							"index": toolBlockIdx,
+							"index": toolState.BlockIndex,
 							"delta": map[string]string{
 								"type":         "input_json_delta",
 								"partial_json": tc.Function.Arguments,
@@ -564,8 +582,10 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	if inTextBlock {
 		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
 	}
-	for _, idx := range seenTools {
-		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", idx)
+	for _, toolState := range seenTools {
+		if toolState.StartEmitted {
+			fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
+		}
 	}
 	// Send message_delta
 	fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", stopReason, outputTokens)

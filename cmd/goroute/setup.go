@@ -255,7 +255,7 @@ func ResolveModel(home string, modelInput string, prefProvider string, fallbackD
 			}
 		}
 	}
-	for _, cName := range []string{"claude-models", "claude", "auto", "deepseek", "claude-opus"} {
+	for _, cName := range []string{"frontier", "claude-models", "claude", "auto", "deepseek", "claude-opus"} {
 		if strings.EqualFold(cName, modelName) {
 			return ResolvedModelInfo{
 				FullID:       cName,
@@ -381,7 +381,7 @@ func setupClaude(home string, opts AgentSetupOptions) error {
 		targetKey = opts.APIKey
 	}
 
-	primary := ResolveModel(home, opts.Model, opts.Provider, "claude-3-7-sonnet")
+	primary := ResolveModel(home, opts.Model, opts.Provider, "frontier")
 
 	data["customBaseUrl"] = targetURL
 
@@ -394,6 +394,10 @@ func setupClaude(home string, opts AgentSetupOptions) error {
 	data["model"] = primary.FullID
 	env["ANTHROPIC_MODEL"] = primary.FullID
 	env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = primary.FullID
+	env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = primary.FullID
+	env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = primary.FullID
+	delete(env, "ANTHROPIC_DEFAULT_FABLE_MODEL")
+	delete(env, "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY")
 	data["env"] = env
 
 	bytes, err := json.MarshalIndent(data, "", "  ")

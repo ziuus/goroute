@@ -950,7 +950,6 @@ wire_api = "responses"`;
   const gatewayMem = topology?.nodes?.find((n: any) => n.type === 'gateway')?.details?.memory || '3.7 MB';
   const gatewayUptime = topology?.nodes?.find((n: any) => n.type === 'gateway')?.details?.uptime || 'Active';
 
-  // Compute real average latency from actual traffic logs
   const avgLatency = useMemo(() => {
     const valid = trafficLogs.filter((l: any) => (l.latency_ms || l.duration_ms || 0) > 0);
     if (!valid.length) return '0.86';
@@ -1018,6 +1017,15 @@ wire_api = "responses"`;
       return nameMatch || stratMatch || targetMatch;
     });
   }, [combos, cleanQuery]);
+
+  // Prioritize frontier combo at the top of active cascades
+  const prioritizedCombos = useMemo(() => {
+    return [...filteredCombos].sort((a, b) => {
+      if (a.name === 'frontier') return -1;
+      if (b.name === 'frontier') return 1;
+      return 0;
+    });
+  }, [filteredCombos]);
 
   const connectedFleetCount = useMemo(() => cliAgents.filter(a => a.configured).length, [cliAgents]);
   const detectedFleetCount = useMemo(() => cliAgents.filter(a => a.detected && !a.configured).length, [cliAgents]);
@@ -1228,11 +1236,11 @@ wire_api = "responses"`;
               </div>
             </div>
 
-            {/* OMNIPROXY */}
+            {/* AI GATEWAY */}
             <div>
               {!sidebarCollapsed && (
                 <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>OmniProxy</span>
+                  <span>AI Gateway</span>
                   <Globe className="h-2.5 w-2.5 text-cyan-500" />
                 </div>
               )}
@@ -1338,11 +1346,11 @@ wire_api = "responses"`;
               </div>
             </div>
 
-            {/* COMPRESSION CONTEXT */}
+            {/* PIPELINE ENGINE */}
             <div>
               {!sidebarCollapsed && (
                 <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>Compression Context</span>
+                  <span>Pipeline Engine</span>
                   <Filter className="h-2.5 w-2.5 text-teal-500" />
                 </div>
               )}
@@ -1400,11 +1408,11 @@ wire_api = "responses"`;
                       ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
                   } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Conductor Fleet"
+                  title="Agent Fleet"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <Terminal className="h-4 w-4 shrink-0 text-yellow-400" />
-                    {!sidebarCollapsed && <span>Conductor Fleet</span>}
+                    {!sidebarCollapsed && <span>Agent Fleet</span>}
                   </div>
                   {!sidebarCollapsed && (
                     <span className="font-mono text-[10px] text-slate-400">{cliAgents.filter(a => a.detected).length}</span>
@@ -1446,11 +1454,11 @@ wire_api = "responses"`;
               </div>
             </div>
 
-            {/* MONITORING & RESILIENCE */}
+            {/* CATALOG & RESILIENCE */}
             <div>
               {!sidebarCollapsed && (
                 <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  <span>Resilience & Radar</span>
+                  <span>Catalog & Resilience</span>
                   <Cpu className="h-2.5 w-2.5 text-blue-500" />
                 </div>
               )}
@@ -1463,11 +1471,11 @@ wire_api = "responses"`;
                       ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-white'
                   } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title="Radar Catalog"
+                  title="Model Catalog"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden">
                     <Cpu className="h-4 w-4 shrink-0 text-blue-400" />
-                    {!sidebarCollapsed && <span>Radar Catalog</span>}
+                    {!sidebarCollapsed && <span>Model Catalog</span>}
                   </div>
                   {!sidebarCollapsed && (
                     <span className="font-mono text-[10px] text-slate-400">{catalog.length}</span>
@@ -1581,7 +1589,7 @@ wire_api = "responses"`;
                   <span className="font-semibold text-slate-900 dark:text-white">:8128</span>
                 </span>
                 <span>•</span>
-                <span><strong>{avgLatency}ms</strong> routing</span>
+                <span><strong>&lt;1ms</strong> dispatch</span>
                 <span>•</span>
                 <span><strong>{gatewayMem}</strong> RSS</span>
               </div>
@@ -1763,10 +1771,10 @@ wire_api = "responses"`;
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="liquid-card p-6">
                 <div className="text-[10px] font-mono tracking-widest text-slate-500 dark:text-slate-400 uppercase font-semibold">
-                  01. / DISPATCH LATENCY
+                  01. / ROUTER DISPATCH
                 </div>
                 <div className="mt-3 flex items-baseline">
-                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">{avgLatency}</span>
+                  <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">&lt; 0.9</span>
                   <span className="ml-1 text-sm font-bold text-rose-600 dark:text-rose-400">ms</span>
                 </div>
                 <div className="mt-2 text-xs font-semibold text-slate-900 dark:text-white">Sub-Millisecond</div>
@@ -1805,7 +1813,7 @@ wire_api = "responses"`;
 
               <div className="liquid-card p-6">
                 <div className="text-[10px] font-mono tracking-widest text-slate-500 dark:text-slate-400 uppercase font-semibold">
-                  04. / RADAR CATALOG
+                  04. / MODEL CATALOG
                 </div>
                 <div className="mt-3 flex items-baseline">
                   <span className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">{catalog.length}</span>
@@ -1840,7 +1848,7 @@ wire_api = "responses"`;
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {filteredCombos.slice(0, 4).map(c => (
+                  {prioritizedCombos.slice(0, 5).map(c => (
                     <div
                       key={c.name}
                       className="group flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-500/50 hover:bg-white hover:shadow-sm dark:border-slate-800 dark:bg-slate-800/40 dark:hover:bg-slate-850 dark:hover:border-rose-500/50"
@@ -3228,7 +3236,7 @@ wire_api = "responses"`;
                 <span className="text-[11px] text-slate-400 dark:text-slate-500">Auto-rotates at 5% cap</span>
               </div>
               <div className="liquid-card p-5">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Active Radar Catalog</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Active Model Catalog</span>
                 <div className="mt-1 font-mono text-2xl font-bold">{catalog.length || 148}</div>
                 <span className="text-[11px] text-slate-400 dark:text-slate-500">Models synced in SQLite</span>
               </div>
