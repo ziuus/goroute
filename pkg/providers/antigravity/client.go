@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -556,6 +557,12 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	attempted := make(map[string]bool)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			if lastBody != nil {
+				lastBody.Close()
+			}
+			return nil, false, 499, ctx.Err()
+		}
 		var acc *Account
 		var err error
 		var excludeList []string
@@ -829,6 +836,12 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				if lastBody != nil {
+					lastBody.Close()
+				}
+				return nil, false, 499, ctx.Err()
+			}
 			log.Printf("[Antigravity] HTTP request failed: %v", err)
 			continue
 		}

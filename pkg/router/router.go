@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -605,6 +606,10 @@ func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *p
 	var lastStatus int
 
 	for _, target := range targets {
+		if ctx.Err() != nil {
+			return nil, false, 499, ctx.Err()
+		}
+
 		// 1. Check if target refers to another combo (nested / composite combo)
 		var subCombo *Combo
 		r.mu.RLock()
@@ -620,6 +625,12 @@ func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *p
 		if subCombo != nil {
 			log.Printf("[GoRoute] Cascading into nested combo %q (depth %d)", subCombo.Name, depth+1)
 			body, isStream, statusCode, err := r.executeComboRecursive(ctx, subCombo, req, visited, depth+1)
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) || statusCode == 499 {
+				if body != nil {
+					body.Close()
+				}
+				return nil, false, 499, ctx.Err()
+			}
 			if err == nil && statusCode >= 200 && statusCode < 400 {
 				return body, isStream, statusCode, nil
 			}
@@ -668,6 +679,13 @@ func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *p
 		start := time.Now()
 		body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
 		elapsedMs := time.Since(start).Milliseconds()
+
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || statusCode == 499 {
+			if body != nil {
+				body.Close()
+			}
+			return nil, false, 499, ctx.Err()
+		}
 
 		if err != nil {
 			pf := resilience.ClassifyFailure(target.ProviderID, statusCode, err.Error(), 0)
@@ -826,6 +844,9 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 	var lastStatus int
 	candidates := r.rankProvidersForModel(req.Model)
 	for _, p := range candidates {
+		if ctx.Err() != nil {
+			return nil, false, 499, ctx.Err()
+		}
 		if resilience.GlobalCooldown.IsCooling(p.ID(), req.Model) {
 			continue
 		}
@@ -837,6 +858,12 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 		translator.SanitizeChatRequest(p.ID(), p.Type(), &targetReq)
 		start := time.Now()
 		body, isStream, statusCode, err := p.ChatCompletion(ctx, &targetReq)
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || statusCode == 499 {
+			if body != nil {
+				body.Close()
+			}
+			return nil, false, 499, ctx.Err()
+		}
 		if err == nil && statusCode >= 200 && statusCode < 400 {
 			r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
 			cb.RecordSuccess()

@@ -33,6 +33,7 @@ var (
 		"claude-3-haiku-20240307":  "claude-haiku-4-5-20251001",
 		"claude-3-5-sonnet-latest": "claude-sonnet-4-6",
 		"claude-3-5-haiku-latest":  "claude-haiku-4-5-20251001",
+		"claude-frontier":          "frontier",
 
 		// OpenAI aliases
 		"gpt-4":          "gpt-4o",

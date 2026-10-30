@@ -47,6 +47,20 @@ func (cm *CircuitManager) Get(providerID string) *CircuitBreaker {
 	return cb
 }
 
+func (cm *CircuitManager) Reset(providerID string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	if providerID == "" {
+		cm.circuits = make(map[string]*CircuitBreaker)
+		return
+	}
+	delete(cm.circuits, providerID)
+}
+
+func (cm *CircuitManager) ResetAll() {
+	cm.Reset("")
+}
+
 func (cb *CircuitBreaker) AllowRequest() bool {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()

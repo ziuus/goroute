@@ -4102,6 +4102,8 @@ func (s *Server) Reload() error {
 	st, _ := store.NewStore(s.storePath, "goroute-default-key")
 
 	s.router.Clear()
+	resilience.GlobalCooldown.Reset("")
+	resilience.GlobalCircuits.ResetAll()
 
 	for _, pCfg := range cfg.Providers {
 		switch pCfg.Type {
