@@ -62,11 +62,17 @@ func (p *Provider) IsHealthy() bool {
 	return len(p.accounts) > 0
 }
 
-func (p *Provider) NextAccount(ctx context.Context, pinnedID string) (*Account, error) {
+func (p *Provider) NextAccount(ctx context.Context, pinnedID string, excluded ...string) (*Account, error) {
 	if len(p.accounts) == 0 {
 		return nil, fmt.Errorf("no accounts configured for provider %s", p.id)
 	}
-	if pinnedID != "" {
+
+	excludedMap := make(map[string]bool)
+	for _, ex := range excluded {
+		excludedMap[ex] = true
+	}
+
+	if pinnedID != "" && !excludedMap[pinnedID] {
 		for _, a := range p.accounts {
 			if a.ID == pinnedID || a.Email == pinnedID {
 				return a, nil
@@ -87,13 +93,21 @@ func (p *Provider) NextAccount(ctx context.Context, pinnedID string) (*Account, 
 		if accPool == "" {
 			accPool = "pool1"
 		}
-		if accPool == targetPool {
+		if accPool == targetPool && !excludedMap[a.ID] {
 			poolAccounts = append(poolAccounts, a)
 		}
 	}
 
 	if len(poolAccounts) == 0 {
-		poolAccounts = p.accounts
+		for _, a := range p.accounts {
+			if !excludedMap[a.ID] {
+				poolAccounts = append(poolAccounts, a)
+			}
+		}
+	}
+
+	if len(poolAccounts) == 0 {
+		return nil, fmt.Errorf("all accounts exhausted for provider %s", p.id)
 	}
 
 	var candidateIDs []string
@@ -539,18 +553,24 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	maxAttempts := len(p.accounts)
 	var lastStatus int
 	var lastBody io.ReadCloser
+	attempted := make(map[string]bool)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		var acc *Account
 		var err error
-		if attempt == 0 && pinnedAcc != "" {
-			acc, err = p.NextAccount(ctx, pinnedAcc)
+		var excludeList []string
+		for id := range attempted {
+			excludeList = append(excludeList, id)
+		}
+		if attempt == 0 && pinnedAcc != "" && !attempted[pinnedAcc] {
+			acc, err = p.NextAccount(ctx, pinnedAcc, excludeList...)
 		} else {
-			acc, err = p.NextAccount(ctx, "")
+			acc, err = p.NextAccount(ctx, "", excludeList...)
 		}
 		if err != nil {
-			continue
+			break
 		}
+		attempted[acc.ID] = true
 
 		token, err := acc.GetValidAccessToken(ctx)
 		if err != nil {
@@ -859,7 +879,11 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// If 402/429 (quota), 403 (unlicensed/permission), 404 (not found on account), or 401, try next account
 		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
 			affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
-			pool.GlobalPool.SetCooldown(acc.Pool, acc.ID, 10*time.Minute)
+			accPool := acc.Pool
+			if accPool == "" {
+				accPool = "pool1"
+			}
+			pool.GlobalPool.SetCooldown(accPool, acc.ID, 10*time.Minute)
 			if lastBody != nil {
 				lastBody.Close()
 			}

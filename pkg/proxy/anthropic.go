@@ -377,6 +377,7 @@ type StreamToolCall struct {
 	BlockIndex   int
 	StartEmitted bool
 	ArgsBuf      strings.Builder
+	TotalArgs    strings.Builder
 }
 
 func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http.Flusher, model string) {
@@ -551,6 +552,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 						// Flush any arguments buffered before tool name was known
 						if toolState.ArgsBuf.Len() > 0 {
 							bufferedArgs := toolState.ArgsBuf.String()
+							toolState.TotalArgs.WriteString(bufferedArgs)
 							toolState.ArgsBuf.Reset()
 							argsJSON, _ := json.Marshal(map[string]interface{}{
 								"type":  "content_block_delta",
@@ -566,6 +568,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 							}
 						}
 					} else if toolState.StartEmitted && tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
+						toolState.TotalArgs.WriteString(tc.Function.Arguments)
 						argsJSON, _ := json.Marshal(map[string]interface{}{
 							"type":  "content_block_delta",
 							"index": toolState.BlockIndex,
@@ -614,6 +617,31 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 		return activeTools[i].BlockIndex < activeTools[j].BlockIndex
 	})
 	for _, toolState := range activeTools {
+		// Guard against empty input that violates Claude Code schema for critical tools
+		totalArgsStr := strings.TrimSpace(toolState.TotalArgs.String())
+		if totalArgsStr == "" || totalArgsStr == "{}" {
+			var fallbackJSON string
+			switch toolState.Name {
+			case "AskUserQuestion":
+				fallbackJSON = `{"questions":[{"question":"How would you like to proceed?","options":["Proceed","Cancel"]}]}`
+			case "Bash":
+				fallbackJSON = `{"command":"pwd"}`
+			}
+			if fallbackJSON != "" {
+				argsJSON, _ := json.Marshal(map[string]interface{}{
+					"type":  "content_block_delta",
+					"index": toolState.BlockIndex,
+					"delta": map[string]string{
+						"type":         "input_json_delta",
+						"partial_json": fallbackJSON,
+					},
+				})
+				fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		}
 		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
 	}
 	// Send message_delta
