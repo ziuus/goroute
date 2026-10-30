@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -375,6 +376,7 @@ type StreamToolCall struct {
 	Name         string
 	BlockIndex   int
 	StartEmitted bool
+	ArgsBuf      strings.Builder
 }
 
 func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http.Flusher, model string) {
@@ -510,7 +512,14 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 						toolState.Name = tc.Function.Name
 					}
 
-					if !toolState.StartEmitted && (toolState.Name != "" || tc.Function.Arguments != "") {
+					if tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
+						if !toolState.StartEmitted {
+							toolState.ArgsBuf.WriteString(tc.Function.Arguments)
+						}
+					}
+
+					// Only emit start block once we have the real tool name
+					if !toolState.StartEmitted && toolState.Name != "" {
 						if inTextBlock {
 							fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
 							inTextBlock = false
@@ -521,9 +530,6 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 
 						if toolState.ID == "" {
 							toolState.ID = fmt.Sprintf("toolu_%d", toolState.BlockIndex)
-						}
-						if toolState.Name == "" {
-							toolState.Name = "tool"
 						}
 
 						toolStartJSON, _ := json.Marshal(map[string]interface{}{
@@ -541,9 +547,25 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 							flusher.Flush()
 						}
 						toolState.StartEmitted = true
-					}
 
-					if toolState.StartEmitted && tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
+						// Flush any arguments buffered before tool name was known
+						if toolState.ArgsBuf.Len() > 0 {
+							bufferedArgs := toolState.ArgsBuf.String()
+							toolState.ArgsBuf.Reset()
+							argsJSON, _ := json.Marshal(map[string]interface{}{
+								"type":  "content_block_delta",
+								"index": toolState.BlockIndex,
+								"delta": map[string]string{
+									"type":         "input_json_delta",
+									"partial_json": bufferedArgs,
+								},
+							})
+							fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+							if flusher != nil {
+								flusher.Flush()
+							}
+						}
+					} else if toolState.StartEmitted && tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
 						argsJSON, _ := json.Marshal(map[string]interface{}{
 							"type":  "content_block_delta",
 							"index": toolState.BlockIndex,
@@ -582,10 +604,17 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	if inTextBlock {
 		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
 	}
+	var activeTools []*StreamToolCall
 	for _, toolState := range seenTools {
 		if toolState.StartEmitted {
-			fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
+			activeTools = append(activeTools, toolState)
 		}
+	}
+	sort.Slice(activeTools, func(i, j int) bool {
+		return activeTools[i].BlockIndex < activeTools[j].BlockIndex
+	})
+	for _, toolState := range activeTools {
+		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
 	}
 	// Send message_delta
 	fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", stopReason, outputTokens)
@@ -636,6 +665,24 @@ func translateAnthropicToolsToOpenAI(tools []interface{}) []interface{} {
 // translateAnthropicMessagesToOpenAI parses tool_use and tool_result blocks into standard OpenAI ChatMessages
 func translateAnthropicMessagesToOpenAI(messages []AnthropicMessage) []providers.ChatMessage {
 	var result []providers.ChatMessage
+
+	// Pre-index tool_use names by ID across all messages so tool_results always know their tool name
+	toolNamesByID := make(map[string]string)
+	for _, m := range messages {
+		if blocks, ok := m.Content.([]interface{}); ok {
+			for _, b := range blocks {
+				if bMap, ok := b.(map[string]interface{}); ok {
+					if bMap["type"] == "tool_use" {
+						if id, ok := bMap["id"].(string); ok {
+							if name, ok := bMap["name"].(string); ok && name != "" {
+								toolNamesByID[id] = name
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	for _, m := range messages {
 		blocks, ok := m.Content.([]interface{})
@@ -691,8 +738,15 @@ func translateAnthropicMessagesToOpenAI(messages []AnthropicMessage) []providers
 					cBytes, _ := json.Marshal(cv)
 					contentStr = string(cBytes)
 				}
+				toolName := toolNamesByID[id]
+				if toolName == "" {
+					if n, ok := bMap["name"].(string); ok {
+						toolName = n
+					}
+				}
 				toolResults = append(toolResults, providers.ChatMessage{
 					Role:       "tool",
+					Name:       toolName,
 					ToolCallID: id,
 					Content:    contentStr,
 				})
@@ -710,13 +764,15 @@ func translateAnthropicMessagesToOpenAI(messages []AnthropicMessage) []providers
 		}
 
 		if len(toolResults) > 0 {
+			// Anthropic / Claude requires tool results to immediately follow the tool_use turn.
+			// Any accompanying user text must come after the tool results (#17256).
+			result = append(result, toolResults...)
 			if len(textParts) > 0 {
 				result = append(result, providers.ChatMessage{
 					Role:    m.Role,
 					Content: strings.Join(textParts, "\n"),
 				})
 			}
-			result = append(result, toolResults...)
 			continue
 		}
 

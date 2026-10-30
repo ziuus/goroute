@@ -392,15 +392,6 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 					OwnedBy: "goroute-combo",
 				})
 			}
-			mirrorDash := "claude-" + name
-			if !seen[mirrorDash] {
-				seen[mirrorDash] = true
-				ccMirrors = append(ccMirrors, providers.ModelInfo{
-					ID:      mirrorDash,
-					Object:  "model",
-					OwnedBy: "goroute-combo",
-				})
-			}
 		}
 	}
 

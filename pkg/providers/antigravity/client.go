@@ -289,6 +289,7 @@ func parseGeminiParts(content interface{}, toolUseNames map[string]string) []gem
 					if name == "" {
 						name = "tool"
 					}
+					name = SanitizeGeminiToolName(name)
 					content := m["content"]
 					parts = append(parts, geminiPart{
 						FunctionResponse: &geminiFunctionResponse{
@@ -588,6 +589,36 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 		var contents []geminiContent
 		toolUseNames := make(map[string]string)
+		// Pre-populate tool names across all messages so tool_result always finds its tool name
+		for _, msg := range req.Messages {
+			if msg.Role == "tool" && msg.ToolCallID != "" && msg.Name != "" {
+				toolUseNames[msg.ToolCallID] = msg.Name
+			}
+			for _, tc := range msg.ToolCalls {
+				if tcMap, ok := tc.(map[string]interface{}); ok {
+					id, _ := tcMap["id"].(string)
+					if fn, ok := tcMap["function"].(map[string]interface{}); ok {
+						if name, ok := fn["name"].(string); ok && name != "" && id != "" {
+							toolUseNames[id] = name
+						}
+					}
+				}
+			}
+			if slice, ok := msg.Content.([]interface{}); ok {
+				for _, b := range slice {
+					if bm, ok := b.(map[string]interface{}); ok {
+						if bm["type"] == "tool_use" {
+							if id, ok := bm["id"].(string); ok {
+								if name, ok := bm["name"].(string); ok && name != "" {
+									toolUseNames[id] = name
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
 		for _, msg := range req.Messages {
 			role := msg.Role
 			var parts []geminiPart
@@ -626,7 +657,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 							ThoughtSignature: sig,
 							FunctionCall: &geminiFunctionCall{
 								ID:   id,
-								Name: name,
+								Name: SanitizeGeminiToolName(name),
 								Args: argsMap,
 							},
 						})
@@ -644,17 +675,20 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				if name == "" {
 					name = "tool"
 				}
+				name = SanitizeGeminiToolName(name)
 				var respMap map[string]interface{}
 				if str, ok := msg.Content.(string); ok {
 					if len(str) > 200 {
 						filtered := rtk.GlobalEngine.FilterCommandOutput("", str)
 						str = filtered.Output
 					}
-					if err := json.Unmarshal([]byte(str), &respMap); err != nil {
-						respMap = map[string]interface{}{"result": str}
-					}
+					respMap = map[string]interface{}{"result": str}
 				} else if m, ok := msg.Content.(map[string]interface{}); ok {
-					respMap = m
+					if _, hasResult := m["result"]; hasResult {
+						respMap = m
+					} else {
+						respMap = map[string]interface{}{"result": m}
+					}
 				} else {
 					respMap = map[string]interface{}{"result": msg.Content}
 				}
@@ -686,7 +720,22 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			}
 
 			if len(contents) > 0 && contents[len(contents)-1].Role == role {
-				contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, validParts...)
+				mergedParts := append(contents[len(contents)-1].Parts, validParts...)
+				if strings.Contains(strings.ToLower(upstreamModel), "claude") {
+					// Claude via Google Cloud Code requires functionResponse parts to precede text (#17256)
+					var frParts []geminiPart
+					var otherParts []geminiPart
+					for _, p := range mergedParts {
+						if p.FunctionResponse != nil {
+							frParts = append(frParts, p)
+						} else {
+							otherParts = append(otherParts, p)
+						}
+					}
+					contents[len(contents)-1].Parts = append(frParts, otherParts...)
+				} else {
+					contents[len(contents)-1].Parts = mergedParts
+				}
 			} else {
 				contents = append(contents, geminiContent{
 					Role:  role,
@@ -787,6 +836,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		respBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		log.Printf("[Antigravity] Account %s returned HTTP %d: %s", acc.ID, resp.StatusCode, string(respBytes))
+		if resp.StatusCode >= 400 {
+			log.Printf("[Antigravity] HTTP %d request payload: %s", resp.StatusCode, string(reqBytes))
+		}
 
 		if resp.StatusCode == http.StatusUnauthorized {
 			acc.InvalidateToken()
