@@ -15,8 +15,8 @@ type ThinkingBudgetConfig struct {
 var (
 	thinkingMu     sync.RWMutex
 	thinkingConfig = ThinkingBudgetConfig{
-		Mode:         "passthrough",
-		CustomBudget: 10240,
+		Mode:         "adaptive",
+		CustomBudget: 4000,
 		EffortLevel:  "medium",
 	}
 )
