@@ -15,17 +15,20 @@ import (
 
 // CallLog represents a persistent historical proxy query record.
 type CallLog struct {
-	ID           string    `json:"id"`
-	Timestamp    time.Time `json:"timestamp"`
-	Model        string    `json:"model"`
-	Provider     string    `json:"provider"`
-	AccountID    string    `json:"account_id"`
-	InputTokens  int       `json:"input_tokens"`
-	OutputTokens int       `json:"output_tokens"`
-	CostUSD      float64   `json:"cost_usd"`
-	LatencyMs    int64     `json:"latency_ms"`
-	StatusCode   int       `json:"status_code"`
-	ErrorMessage string    `json:"error_message,omitempty"`
+	ID              string    `json:"id"`
+	Timestamp       time.Time `json:"timestamp"`
+	Endpoint        string    `json:"endpoint"`
+	Model           string    `json:"model"`
+	Provider        string    `json:"provider"`
+	AccountID       string    `json:"account_id"`
+	InputTokens     int       `json:"input_tokens"`
+	OutputTokens    int       `json:"output_tokens"`
+	CostUSD         float64   `json:"cost_usd"`
+	LatencyMs       int64     `json:"latency_ms"`
+	StatusCode      int       `json:"status_code"`
+	ErrorMessage    string    `json:"error_message,omitempty"`
+	PromptPreview   string    `json:"prompt_preview,omitempty"`
+	ResponsePreview string    `json:"response_preview,omitempty"`
 }
 
 // DBStore wraps SQLite database operations for GoRoute.
@@ -80,7 +83,10 @@ func InitDB(dbPath string) (*DBStore, error) {
 		cost_usd REAL DEFAULT 0.0,
 		latency_ms INTEGER DEFAULT 0,
 		status_code INTEGER DEFAULT 200,
-		error_message TEXT
+		error_message TEXT,
+		endpoint TEXT DEFAULT '/v1/chat/completions',
+		prompt_preview TEXT DEFAULT '',
+		response_preview TEXT DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_call_logs_timestamp ON call_logs(timestamp DESC);
@@ -123,6 +129,11 @@ func InitDB(dbPath string) (*DBStore, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("failed to execute schema: %w", err)
 	}
+
+	// Dynamic column migrations for existing SQLite databases
+	_, _ = db.Exec(`ALTER TABLE call_logs ADD COLUMN endpoint TEXT DEFAULT '/v1/chat/completions';`)
+	_, _ = db.Exec(`ALTER TABLE call_logs ADD COLUMN prompt_preview TEXT DEFAULT '';`)
+	_, _ = db.Exec(`ALTER TABLE call_logs ADD COLUMN response_preview TEXT DEFAULT '';`)
 
 	store := &DBStore{db: db}
 	globalDB.Store(store)
@@ -200,9 +211,14 @@ func (s *DBStore) RecordCall(log CallLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	endpoint := log.Endpoint
+	if endpoint == "" {
+		endpoint = "/v1/chat/completions"
+	}
+
 	query := `
-	INSERT INTO call_logs (id, timestamp, model, provider, account_id, input_tokens, output_tokens, cost_usd, latency_ms, status_code, error_message)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO call_logs (id, timestamp, model, provider, account_id, input_tokens, output_tokens, cost_usd, latency_ms, status_code, error_message, endpoint, prompt_preview, response_preview)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(query,
 		log.ID,
@@ -216,6 +232,9 @@ func (s *DBStore) RecordCall(log CallLog) error {
 		log.LatencyMs,
 		log.StatusCode,
 		log.ErrorMessage,
+		endpoint,
+		log.PromptPreview,
+		log.ResponsePreview,
 	)
 	return err
 }
@@ -229,7 +248,7 @@ func (s *DBStore) QueryRecentLogs(limit, offset int) ([]CallLog, error) {
 		limit = 50
 	}
 	query := `
-	SELECT id, timestamp, model, provider, account_id, input_tokens, output_tokens, cost_usd, latency_ms, status_code, error_message
+	SELECT id, timestamp, model, provider, account_id, input_tokens, output_tokens, cost_usd, latency_ms, status_code, error_message, COALESCE(endpoint, '/v1/chat/completions'), COALESCE(prompt_preview, ''), COALESCE(response_preview, '')
 	FROM call_logs
 	ORDER BY timestamp DESC
 	LIMIT ? OFFSET ?
@@ -259,6 +278,9 @@ func (s *DBStore) QueryRecentLogs(limit, offset int) ([]CallLog, error) {
 			&l.LatencyMs,
 			&l.StatusCode,
 			&errMsg,
+			&l.Endpoint,
+			&l.PromptPreview,
+			&l.ResponsePreview,
 		); err != nil {
 			return nil, err
 		}

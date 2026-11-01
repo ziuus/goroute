@@ -80,7 +80,7 @@ func (s *DBStore) QueryFilteredLogs(f CallLogFilter) ([]CallLog, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, timestamp, model, provider, account_id, input_tokens, output_tokens, cost_usd, latency_ms, status_code, error_message
+		SELECT id, timestamp, model, provider, account_id, input_tokens, output_tokens, cost_usd, latency_ms, status_code, error_message, COALESCE(endpoint, '/v1/chat/completions'), COALESCE(prompt_preview, ''), COALESCE(response_preview, '')
 		FROM call_logs
 		%s
 		ORDER BY timestamp DESC
@@ -114,6 +114,9 @@ func (s *DBStore) QueryFilteredLogs(f CallLogFilter) ([]CallLog, error) {
 			&l.LatencyMs,
 			&l.StatusCode,
 			&errMsg,
+			&l.Endpoint,
+			&l.PromptPreview,
+			&l.ResponsePreview,
 		); err != nil {
 			return nil, err
 		}

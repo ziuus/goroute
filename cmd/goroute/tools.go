@@ -241,6 +241,7 @@ func printLogEntry(l GatewayLogEntry, detailed bool) {
 	colorYellow := "\033[33m"
 	colorCyan := "\033[36m"
 	colorDim := "\033[90m"
+	colorMagenta := "\033[35m"
 
 	statusColor := colorGreen
 	statusText := fmt.Sprintf("%d OK", l.StatusCode)
@@ -260,6 +261,11 @@ func printLogEntry(l GatewayLogEntry, detailed bool) {
 		modelStr = "default"
 	}
 
+	endpointStr := l.Endpoint
+	if endpointStr == "" {
+		endpointStr = "/v1/chat/completions"
+	}
+
 	if detailed {
 		badge := "●"
 		if isError {
@@ -267,27 +273,36 @@ func printLogEntry(l GatewayLogEntry, detailed bool) {
 		}
 		tokenInfo := ""
 		if l.Tokens > 0 || l.InputTokens > 0 || l.OutputTokens > 0 {
-			tokenInfo = fmt.Sprintf(" | %stokens:%s %d (%din/%dout)", colorDim, colorReset, l.Tokens, l.InputTokens, l.OutputTokens)
+			tokenInfo = fmt.Sprintf(" | %stokens:%s %d (%din / %dout)", colorDim, colorReset, l.Tokens, l.InputTokens, l.OutputTokens)
 		}
 		providerInfo := ""
 		if l.Provider != "" {
-			providerInfo = fmt.Sprintf(" (%s)", l.Provider)
+			providerInfo = fmt.Sprintf(" %s(%s)%s", colorMagenta, l.Provider, colorReset)
 		}
 
-		fmt.Printf("%s%s [%s]%s %s%-8s%s %smodel:%s %s%s%s%s | %slatency:%s %dms%s\n",
+		fmt.Printf("%s%s [%s]%s %s%-8s%s %sPOST %s%s\n",
 			statusColor, badge, timeStr, colorReset,
 			statusColor, statusText, colorReset,
-			colorDim, colorReset, colorCyan, modelStr, providerInfo, colorReset,
+			colorDim, endpointStr, colorReset)
+		fmt.Printf("  • %sModel:%s    %s%s%s%s | %slatency:%s %dms%s\n",
+			colorDim, colorReset, colorCyan, modelStr, colorReset, providerInfo,
 			colorDim, colorReset, l.DurationMs, tokenInfo)
 
-		if isError && l.Error != "" {
-			fmt.Printf("  %s✖ Error:%s    %s%s%s\n", colorRed, colorReset, colorRed, l.Error, colorReset)
+		if isError {
+			errMsg := l.Error
+			if errMsg == "" {
+				errMsg = fmt.Sprintf("HTTP %d upstream error", l.StatusCode)
+			}
+			fmt.Printf("  • %s✖ Error:%s    %s%s%s\n", colorRed, colorReset, colorRed, errMsg, colorReset)
 		}
 		if l.PromptPreview != "" {
-			fmt.Printf("  %s▶ Prompt:%s   \"%s\"\n", colorDim, colorReset, l.PromptPreview)
+			fmt.Printf("  • %s▶ Prompt:%s   \"%s\"\n", colorDim, colorReset, l.PromptPreview)
 		}
 		if l.ResponsePreview != "" && !isError {
-			fmt.Printf("  %s◀ Response:%s \"%s\"\n", colorDim, colorReset, l.ResponsePreview)
+			fmt.Printf("  • %s◀ Response:%s \"%s\"\n", colorDim, colorReset, l.ResponsePreview)
+		}
+		if l.PromptPreview == "" && l.ResponsePreview == "" && !isError {
+			fmt.Printf("  • %sInfo:%s       %s(No prompt/response captured for synthetic probe or benchmark)%s\n", colorDim, colorReset, colorDim, colorReset)
 		}
 		fmt.Println()
 	} else {

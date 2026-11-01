@@ -73,16 +73,19 @@ func RecordRequest(entry RequestLog) {
 				outTok = logEntry.Tokens
 			}
 			_ = db.RecordCall(storage.CallLog{
-				ID:           logEntry.ID,
-				Timestamp:    logEntry.Timestamp,
-				Model:        logEntry.Model,
-				Provider:     logEntry.Provider,
-				AccountID:    logEntry.AccountID,
-				InputTokens:  logEntry.InputTokens,
-				OutputTokens: outTok,
-				LatencyMs:    logEntry.DurationMs,
-				StatusCode:   logEntry.StatusCode,
-				ErrorMessage: logEntry.Error,
+				ID:              logEntry.ID,
+				Timestamp:       logEntry.Timestamp,
+				Endpoint:        logEntry.Endpoint,
+				Model:           logEntry.Model,
+				Provider:        logEntry.Provider,
+				AccountID:       logEntry.AccountID,
+				InputTokens:     logEntry.InputTokens,
+				OutputTokens:    outTok,
+				LatencyMs:       logEntry.DurationMs,
+				StatusCode:      logEntry.StatusCode,
+				ErrorMessage:    logEntry.Error,
+				PromptPreview:   logEntry.PromptPreview,
+				ResponsePreview: logEntry.ResponsePreview,
 			})
 		}
 	}(entry)
@@ -104,18 +107,23 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		// Fallback to SQLite persistent store so history is immediately visible after restart
 		db := storage.GetDB()
 		if db != nil {
-			callLogs, _ := db.QueryRecentLogs(20, 0)
+			callLogs, _ := db.QueryRecentLogs(50, 0)
 			for _, cl := range callLogs {
 				logs = append(logs, RequestLog{
-					ID:         cl.ID,
-					Timestamp:  cl.Timestamp,
-					Model:      cl.Model,
-					Provider:   cl.Provider,
-					AccountID:  cl.AccountID,
-					StatusCode: cl.StatusCode,
-					DurationMs: cl.LatencyMs,
-					Tokens:     cl.OutputTokens,
-					Error:      cl.ErrorMessage,
+					ID:              cl.ID,
+					Timestamp:       cl.Timestamp,
+					Endpoint:        cl.Endpoint,
+					Model:           cl.Model,
+					Provider:        cl.Provider,
+					AccountID:       cl.AccountID,
+					StatusCode:      cl.StatusCode,
+					DurationMs:      cl.LatencyMs,
+					Tokens:          cl.OutputTokens,
+					InputTokens:     cl.InputTokens,
+					OutputTokens:    cl.OutputTokens,
+					Error:           cl.ErrorMessage,
+					PromptPreview:   cl.PromptPreview,
+					ResponsePreview: cl.ResponsePreview,
 				})
 			}
 		}
@@ -185,15 +193,20 @@ func GetLogByID(id string) (RequestLog, bool) {
 		if err == nil && len(logs) > 0 {
 			cl := logs[0]
 			return RequestLog{
-				ID:         cl.ID,
-				Timestamp:  cl.Timestamp,
-				Model:      cl.Model,
-				Provider:   cl.Provider,
-				AccountID:  cl.AccountID,
-				StatusCode: cl.StatusCode,
-				DurationMs: cl.LatencyMs,
-				Tokens:     cl.OutputTokens,
-				Error:      cl.ErrorMessage,
+				ID:              cl.ID,
+				Timestamp:       cl.Timestamp,
+				Endpoint:        cl.Endpoint,
+				Model:           cl.Model,
+				Provider:        cl.Provider,
+				AccountID:       cl.AccountID,
+				StatusCode:      cl.StatusCode,
+				DurationMs:      cl.LatencyMs,
+				Tokens:          cl.OutputTokens,
+				InputTokens:     cl.InputTokens,
+				OutputTokens:    cl.OutputTokens,
+				Error:           cl.ErrorMessage,
+				PromptPreview:   cl.PromptPreview,
+				ResponsePreview: cl.ResponsePreview,
 			}, true
 		}
 	}
