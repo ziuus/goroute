@@ -205,13 +205,15 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	respBody, isStream, statusCode, err := s.router.Execute(r.Context(), &chatReq)
 	if err != nil {
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/messages",
-			Model:      req.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      err.Error(),
+			ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:       start,
+			Endpoint:        "/v1/messages",
+			Model:           req.Model,
+			StatusCode:      statusCode,
+			DurationMs:      time.Since(start).Milliseconds(),
+			Error:           err.Error(),
+			PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+			ResponsePreview: "Error: " + err.Error(),
 		})
 		http.Error(w, err.Error(), statusCode)
 		return
@@ -219,18 +221,22 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	defer respBody.Close()
 
 	if statusCode >= 400 {
+		errBytes, _ := io.ReadAll(respBody)
+		errMsg := ExtractErrorMessage(errBytes, statusCode)
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/messages",
-			Model:      req.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      fmt.Sprintf("upstream returned %d", statusCode),
+			ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:       start,
+			Endpoint:        "/v1/messages",
+			Model:           req.Model,
+			StatusCode:      statusCode,
+			DurationMs:      time.Since(start).Milliseconds(),
+			Error:           errMsg,
+			PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+			ResponsePreview: errMsg,
 		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		io.Copy(w, respBody)
+		w.Write(errBytes)
 		return
 	}
 
@@ -243,12 +249,13 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		flusher, _ := w.(http.Flusher)
 		translateOpenAIToAnthropicSSE(respBody, w, flusher, req.Model)
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/messages",
-			Model:      req.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
+			ID:            fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:     start,
+			Endpoint:      "/v1/messages",
+			Model:         req.Model,
+			StatusCode:    statusCode,
+			DurationMs:    time.Since(start).Milliseconds(),
+			PromptPreview: ExtractPromptPreview(chatReq.Messages),
 		})
 		return
 	}
@@ -358,16 +365,22 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(anthropicResp)
 	inTok := openAIResp.Usage.PromptTokens
 	outTok := openAIResp.Usage.CompletionTokens
+	var respSnippet string
+	if len(openAIResp.Choices) > 0 {
+		respSnippet = TruncatePreview(openAIResp.Choices[0].Message.Content, 200)
+	}
 	RecordRequest(RequestLog{
-		ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
-		Timestamp:    start,
-		Endpoint:     "/v1/messages",
-		Model:        req.Model,
-		StatusCode:   statusCode,
-		DurationMs:   time.Since(start).Milliseconds(),
-		InputTokens:  inTok,
-		OutputTokens: outTok,
-		Tokens:       inTok + outTok,
+		ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		Timestamp:       start,
+		Endpoint:        "/v1/messages",
+		Model:           req.Model,
+		StatusCode:      statusCode,
+		DurationMs:      time.Since(start).Milliseconds(),
+		InputTokens:     inTok,
+		OutputTokens:    outTok,
+		Tokens:          inTok + outTok,
+		PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+		ResponsePreview: respSnippet,
 	})
 }
 

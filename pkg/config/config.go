@@ -14,6 +14,7 @@ type ServerConfig struct {
 	Host             string `yaml:"host" json:"host"`
 	StorageDir       string `yaml:"storage_dir" json:"storage_dir"`
 	DisableDashboard bool   `yaml:"disable_dashboard,omitempty" json:"disable_dashboard,omitempty"`
+	EnableDashboard  bool   `yaml:"enable_dashboard,omitempty" json:"enable_dashboard,omitempty"`
 }
 
 type AccountConfig struct {
@@ -78,9 +79,10 @@ func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		Server: ServerConfig{
-			Port:       8128,
-			Host:       "127.0.0.1",
-			StorageDir: filepath.Join(home, ".goroute"),
+			Port:             8128,
+			Host:             "127.0.0.1",
+			StorageDir:       filepath.Join(home, ".goroute"),
+			DisableDashboard: true,
 		},
 		Providers: []ProviderConfig{},
 		Combos:    []ComboConfig{},

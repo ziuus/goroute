@@ -215,34 +215,205 @@ func NewChatCmd() *cobra.Command {
 	return cmd
 }
 
+type GatewayLogEntry struct {
+	ID              string    `json:"id"`
+	Timestamp       time.Time `json:"timestamp"`
+	Endpoint        string    `json:"endpoint"`
+	Model           string    `json:"model"`
+	Provider        string    `json:"provider,omitempty"`
+	StatusCode      int       `json:"status_code"`
+	DurationMs      int64     `json:"duration_ms"`
+	Tokens          int       `json:"tokens,omitempty"`
+	InputTokens     int       `json:"input_tokens,omitempty"`
+	OutputTokens    int       `json:"output_tokens,omitempty"`
+	Error           string    `json:"error,omitempty"`
+	PromptPreview   string    `json:"prompt_preview,omitempty"`
+	ResponsePreview string    `json:"response_preview,omitempty"`
+}
+
+func printLogEntry(l GatewayLogEntry, detailed bool) {
+	timeStr := l.Timestamp.Format("15:04:05")
+	isError := l.StatusCode >= 400 || l.Error != ""
+
+	colorReset := "\033[0m"
+	colorGreen := "\033[32m"
+	colorRed := "\033[31;1m"
+	colorYellow := "\033[33m"
+	colorCyan := "\033[36m"
+	colorDim := "\033[90m"
+
+	statusColor := colorGreen
+	statusText := fmt.Sprintf("%d OK", l.StatusCode)
+	if l.StatusCode >= 500 {
+		statusColor = colorRed
+		statusText = fmt.Sprintf("%d ERR", l.StatusCode)
+	} else if l.StatusCode >= 400 {
+		statusColor = colorRed
+		statusText = fmt.Sprintf("%d ERR", l.StatusCode)
+	} else if l.StatusCode >= 300 {
+		statusColor = colorYellow
+		statusText = fmt.Sprintf("%d REDIR", l.StatusCode)
+	}
+
+	modelStr := l.Model
+	if modelStr == "" {
+		modelStr = "default"
+	}
+
+	if detailed {
+		badge := "●"
+		if isError {
+			badge = "✖"
+		}
+		tokenInfo := ""
+		if l.Tokens > 0 || l.InputTokens > 0 || l.OutputTokens > 0 {
+			tokenInfo = fmt.Sprintf(" | %stokens:%s %d (%din/%dout)", colorDim, colorReset, l.Tokens, l.InputTokens, l.OutputTokens)
+		}
+		providerInfo := ""
+		if l.Provider != "" {
+			providerInfo = fmt.Sprintf(" (%s)", l.Provider)
+		}
+
+		fmt.Printf("%s%s [%s]%s %s%-8s%s %smodel:%s %s%s%s%s | %slatency:%s %dms%s\n",
+			statusColor, badge, timeStr, colorReset,
+			statusColor, statusText, colorReset,
+			colorDim, colorReset, colorCyan, modelStr, providerInfo, colorReset,
+			colorDim, colorReset, l.DurationMs, tokenInfo)
+
+		if isError && l.Error != "" {
+			fmt.Printf("  %s✖ Error:%s    %s%s%s\n", colorRed, colorReset, colorRed, l.Error, colorReset)
+		}
+		if l.PromptPreview != "" {
+			fmt.Printf("  %s▶ Prompt:%s   \"%s\"\n", colorDim, colorReset, l.PromptPreview)
+		}
+		if l.ResponsePreview != "" && !isError {
+			fmt.Printf("  %s◀ Response:%s \"%s\"\n", colorDim, colorReset, l.ResponsePreview)
+		}
+		fmt.Println()
+	} else {
+		tokenStr := "-"
+		if l.Tokens > 0 {
+			tokenStr = fmt.Sprintf("%d", l.Tokens)
+		} else if l.OutputTokens > 0 {
+			tokenStr = fmt.Sprintf("%d", l.OutputTokens)
+		}
+
+		detailSnippet := ""
+		if isError && l.Error != "" {
+			detailSnippet = fmt.Sprintf("%s✖ %s%s", colorRed, l.Error, colorReset)
+		} else if l.ResponsePreview != "" {
+			detailSnippet = fmt.Sprintf("%s◀ %s%s", colorDim, l.ResponsePreview, colorReset)
+		} else if l.PromptPreview != "" {
+			detailSnippet = fmt.Sprintf("%s▶ %s%s", colorDim, l.PromptPreview, colorReset)
+		}
+
+		fmt.Printf("%-10s | %s%-8s%s | %-22s | %-7s | %-7s | %s\n",
+			timeStr,
+			statusColor, statusText, colorReset,
+			modelStr,
+			fmt.Sprintf("%dms", l.DurationMs),
+			tokenStr,
+			detailSnippet,
+		)
+	}
+}
+
 func NewLogsCmd() *cobra.Command {
-	var limit int
+	var (
+		limit    int
+		follow   bool
+		detailed bool
+		filter   string
+		port     int
+	)
+
 	cmd := &cobra.Command{
 		Use:   "logs",
-		Short: "View recent gateway request traffic and latencies",
+		Short: "View recent gateway request traffic, errors, and live responses",
+		Long: `Stream or inspect gateway traffic in real-time or historical logs.
+
+Examples:
+  goroute logs                # Show last 20 requests in compact table
+  goroute logs -d             # Detailed view showing prompts, responses, errors, tokens
+  goroute logs -f             # Stream live requests in real-time as they arrive
+  goroute logs -f -d          # Stream live requests with full response and error details
+  goroute logs --filter error # Show only requests with errors or HTTP 4xx/5xx`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := http.Get("http://127.0.0.1:8128/api/logs")
+			baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+
+			if follow {
+				streamURL := fmt.Sprintf("%s/api/logs/stream", baseURL)
+				req, err := http.NewRequestWithContext(cmd.Context(), "GET", streamURL, nil)
+				if err != nil {
+					return err
+				}
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					return fmt.Errorf("could not connect to gateway log stream on %s: %w", streamURL, err)
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					return fmt.Errorf("gateway stream returned HTTP %d", resp.StatusCode)
+				}
+
+				fmt.Printf("⚡ Streaming live GoRoute requests from %s (Ctrl+C to quit)\n", streamURL)
+				if !detailed {
+					fmt.Printf("%-10s | %-8s | %-22s | %-7s | %-7s | %s\n", "TIME", "STATUS", "MODEL", "LATENCY", "TOKENS", "DETAILS")
+					fmt.Println(strings.Repeat("-", 92))
+				} else {
+					fmt.Println(strings.Repeat("-", 60))
+				}
+
+				scanner := bufio.NewScanner(resp.Body)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if !strings.HasPrefix(line, "data: ") {
+						continue
+					}
+					payload := strings.TrimPrefix(line, "data: ")
+					if payload == "" {
+						continue
+					}
+					var entry GatewayLogEntry
+					if err := json.Unmarshal([]byte(payload), &entry); err != nil {
+						continue
+					}
+
+					if filter == "error" && entry.StatusCode < 400 && entry.Error == "" {
+						continue
+					}
+
+					printLogEntry(entry, detailed)
+				}
+				return scanner.Err()
+			}
+
+			// Historical / snapshot mode
+			logsURL := fmt.Sprintf("%s/api/logs", baseURL)
+			resp, err := http.Get(logsURL)
 			if err != nil {
-				return fmt.Errorf("gateway not running: %w", err)
+				return fmt.Errorf("gateway not running on %s: %w", baseURL, err)
 			}
 			defer resp.Body.Close()
 
 			var res struct {
-				Logs []struct {
-					Timestamp  time.Time `json:"timestamp"`
-					Endpoint   string    `json:"endpoint"`
-					Model      string    `json:"model"`
-					StatusCode int       `json:"status_code"`
-					DurationMs int64     `json:"duration_ms"`
-				} `json:"logs"`
+				Logs []GatewayLogEntry `json:"logs"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
 				return err
 			}
 
-			logs := res.Logs
+			var logs []GatewayLogEntry
+			for _, l := range res.Logs {
+				if filter == "error" && l.StatusCode < 400 && l.Error == "" {
+					continue
+				}
+				logs = append(logs, l)
+			}
+
 			if len(logs) == 0 {
-				fmt.Println("No request logs recorded yet.")
+				fmt.Println("No matching request logs found.")
 				return nil
 			}
 
@@ -251,21 +422,23 @@ func NewLogsCmd() *cobra.Command {
 				startIdx = len(logs) - limit
 			}
 
-			fmt.Printf("%-10s | %-8s | %-25s | %-25s | %-6s\n", "TIME", "STATUS", "ENDPOINT", "MODEL", "LATENCY")
-			fmt.Println(strings.Repeat("-", 82))
+			if !detailed {
+				fmt.Printf("%-10s | %-8s | %-22s | %-7s | %-7s | %s\n", "TIME", "STATUS", "MODEL", "LATENCY", "TOKENS", "DETAILS")
+				fmt.Println(strings.Repeat("-", 92))
+			}
+
 			for i := startIdx; i < len(logs); i++ {
-				l := logs[i]
-				timeStr := l.Timestamp.Format("15:04:05")
-				statusStr := fmt.Sprintf("%d", l.StatusCode)
-				if l.StatusCode == 200 {
-					statusStr = "200 OK"
-				}
-				fmt.Printf("%-10s | %-8s | %-25s | %-25s | %dms\n", timeStr, statusStr, l.Endpoint, l.Model, l.DurationMs)
+				printLogEntry(logs[i], detailed)
 			}
 			return nil
 		},
 	}
+
 	cmd.Flags().IntVarP(&limit, "lines", "n", 20, "Number of recent log lines to display")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Stream logs continuously in real-time")
+	cmd.Flags().BoolVarP(&detailed, "detailed", "d", false, "Display rich request details (prompts, responses, errors, tokens)")
+	cmd.Flags().StringVar(&filter, "filter", "", "Filter logs by level (e.g. 'error')")
+	cmd.Flags().IntVarP(&port, "port", "p", 8128, "GoRoute gateway port")
 	return cmd
 }
 

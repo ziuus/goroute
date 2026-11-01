@@ -1775,13 +1775,15 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/chat/completions",
-			Model:      chatReq.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      err.Error(),
+			ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:       start,
+			Endpoint:        "/v1/chat/completions",
+			Model:           chatReq.Model,
+			StatusCode:      statusCode,
+			DurationMs:      time.Since(start).Milliseconds(),
+			Error:           err.Error(),
+			PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+			ResponsePreview: "Error: " + err.Error(),
 		})
 		http.Error(w, err.Error(), statusCode)
 		return
@@ -1790,18 +1792,22 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[GoRoute] Upstream returned status %d isStream=%v", statusCode, isStream)
 
 	if statusCode >= 400 {
+		errBytes, _ := io.ReadAll(body)
+		errMsg := ExtractErrorMessage(errBytes, statusCode)
 		RecordRequest(RequestLog{
-			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:  start,
-			Endpoint:   "/v1/chat/completions",
-			Model:      chatReq.Model,
-			StatusCode: statusCode,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      fmt.Sprintf("upstream returned %d", statusCode),
+			ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:       start,
+			Endpoint:        "/v1/chat/completions",
+			Model:           chatReq.Model,
+			StatusCode:      statusCode,
+			DurationMs:      time.Since(start).Milliseconds(),
+			Error:           errMsg,
+			PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+			ResponsePreview: errMsg,
 		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		io.Copy(w, body)
+		w.Write(errBytes)
 		return
 	}
 
@@ -1820,15 +1826,17 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		inTok := estimateTokensFromMessages(chatReq.Messages)
 		outTok := 10 + (len(consolidated) / 4)
 		RecordRequest(RequestLog{
-			ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:    start,
-			Endpoint:     "/v1/chat/completions",
-			Model:        chatReq.Model,
-			StatusCode:   statusCode,
-			DurationMs:   time.Since(start).Milliseconds(),
-			InputTokens:  inTok,
-			OutputTokens: outTok,
-			Tokens:       inTok + outTok,
+			ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:       start,
+			Endpoint:        "/v1/chat/completions",
+			Model:           chatReq.Model,
+			StatusCode:      statusCode,
+			DurationMs:      time.Since(start).Milliseconds(),
+			InputTokens:     inTok,
+			OutputTokens:    outTok,
+			Tokens:          inTok + outTok,
+			PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+			ResponsePreview: ExtractResponsePreview(consolidated),
 		})
 		pool.GlobalPool.RecordUsage(poolHeader, "", int64(inTok+outTok))
 		return
@@ -1842,6 +1850,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 		flusher, ok := w.(http.Flusher)
 		buf := make([]byte, 4096)
+		var streamSnippet strings.Builder
 		totalBytes := 0
 		for {
 			n, readErr := body.Read(buf)
@@ -1850,6 +1859,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				w.Write(buf[:n])
 				if ok {
 					flusher.Flush()
+				}
+				if streamSnippet.Len() < 512 {
+					streamSnippet.Write(buf[:n])
 				}
 			}
 			if readErr != nil {
@@ -1862,15 +1874,17 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			outTok = 1
 		}
 		RecordRequest(RequestLog{
-			ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
-			Timestamp:    start,
-			Endpoint:     "/v1/chat/completions",
-			Model:        chatReq.Model,
-			StatusCode:   statusCode,
-			DurationMs:   time.Since(start).Milliseconds(),
-			InputTokens:  inTok,
-			OutputTokens: outTok,
-			Tokens:       inTok + outTok,
+			ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:       start,
+			Endpoint:        "/v1/chat/completions",
+			Model:           chatReq.Model,
+			StatusCode:      statusCode,
+			DurationMs:      time.Since(start).Milliseconds(),
+			InputTokens:     inTok,
+			OutputTokens:    outTok,
+			Tokens:          inTok + outTok,
+			PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+			ResponsePreview: ExtractSSEPreview(streamSnippet.String()),
 		})
 		pool.GlobalPool.RecordUsage(poolHeader, "", int64(inTok+outTok))
 		return
@@ -1899,15 +1913,17 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RecordRequest(RequestLog{
-		ID:           fmt.Sprintf("req_%d", time.Now().UnixNano()),
-		Timestamp:    start,
-		Endpoint:     "/v1/chat/completions",
-		Model:        chatReq.Model,
-		StatusCode:   statusCode,
-		DurationMs:   time.Since(start).Milliseconds(),
-		InputTokens:  pTok,
-		OutputTokens: cTok,
-		Tokens:       pTok + cTok,
+		ID:              fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		Timestamp:       start,
+		Endpoint:        "/v1/chat/completions",
+		Model:           chatReq.Model,
+		StatusCode:      statusCode,
+		DurationMs:      time.Since(start).Milliseconds(),
+		InputTokens:     pTok,
+		OutputTokens:    cTok,
+		Tokens:          pTok + cTok,
+		PromptPreview:   ExtractPromptPreview(chatReq.Messages),
+		ResponsePreview: ExtractResponsePreview(respBytes),
 	})
 	pool.GlobalPool.RecordUsage(poolHeader, "", int64(pTok+cTok))
 

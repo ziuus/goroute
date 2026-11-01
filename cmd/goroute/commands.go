@@ -101,6 +101,7 @@ func openBrowser(url string) {
 func NewServeCmd() *cobra.Command {
 	var port int
 	var cfgPath string
+	var enableDashboard bool
 	var noDashboard bool
 
 	cmd := &cobra.Command{
@@ -237,14 +238,23 @@ func NewServeCmd() *cobra.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 
-			if !noDashboard {
-				if cfg.Server.DisableDashboard || os.Getenv("GOROUTE_NO_DASHBOARD") == "1" || os.Getenv("GOROUTE_NO_DASHBOARD") == "true" {
-					noDashboard = true
-				}
+			// Web dashboard is OFF by default.
+			// It is only activated if explicitly enabled via --dashboard / --web flag,
+			// GOROUTE_ENABLE_DASHBOARD=1 environment variable, or enable_dashboard: true in config.
+			dashboardActive := false
+			if enableDashboard {
+				dashboardActive = true
+			} else if os.Getenv("GOROUTE_ENABLE_DASHBOARD") == "1" || os.Getenv("GOROUTE_ENABLE_DASHBOARD") == "true" {
+				dashboardActive = true
+			} else if cfg.Server.EnableDashboard && !cfg.Server.DisableDashboard {
+				dashboardActive = true
+			}
+			if noDashboard || cfg.Server.DisableDashboard || os.Getenv("GOROUTE_NO_DASHBOARD") == "1" || os.Getenv("GOROUTE_NO_DASHBOARD") == "true" {
+				dashboardActive = false
 			}
 
-			if noDashboard {
-				fmt.Printf("⚡ GoRoute starting on http://%s (Headless mode, dashboard disabled)\n", addr)
+			if !dashboardActive {
+				fmt.Printf("⚡ GoRoute starting on http://%s (Headless mode, web dashboard OFF by default)\n", addr)
 			} else {
 				fmt.Printf("⚡ GoRoute starting on http://%s\n", addr)
 				fmt.Printf("   Dashboard available at:    http://%s/\n", addr)
@@ -252,7 +262,7 @@ func NewServeCmd() *cobra.Command {
 			fmt.Printf("   Universal OpenAI endpoint: http://%s/v1\n", addr)
 			fmt.Printf("   Memory footprint:          < 15 MB RAM\n")
 
-			srv := proxy.NewServer(r, limiter, !noDashboard)
+			srv := proxy.NewServer(r, limiter, dashboardActive)
 			srv.SetConfigPaths(cfgPath, defaultStore)
 			if err := srv.Reload(); err != nil {
 				fmt.Printf("⚠️ Initial configuration load warning: %v\n", err)
@@ -275,7 +285,9 @@ func NewServeCmd() *cobra.Command {
 
 	cmd.Flags().IntVarP(&port, "port", "p", 8128, "Port to listen on")
 	cmd.Flags().StringVarP(&cfgPath, "config", "c", "", "Config file path")
-	cmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Disable the embedded web dashboard completely")
+	cmd.Flags().BoolVar(&enableDashboard, "dashboard", false, "Enable the embedded web dashboard (default: disabled)")
+	cmd.Flags().BoolVar(&enableDashboard, "web", false, "Alias for --dashboard")
+	cmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Explicitly disable the web dashboard")
 	return cmd
 }
 
