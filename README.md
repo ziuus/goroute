@@ -13,6 +13,7 @@
 
 <p align="center">
   <a href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=flat-square&logo=go" alt="Go Version" /></a>
+  <a href="https://aur.archlinux.org/packages/goroute-bin"><img src="https://img.shields.io/aur/version/goroute-bin?color=1793d1&logo=arch-linux&logoColor=white&style=flat-square" alt="AUR Version" /></a>
   <a href="crates/goroute-fast"><img src="https://img.shields.io/badge/Engine-Go%20%2B%20Rust%20Fast-dea584?style=flat-square&logo=rust" alt="Engine" /></a>
   <a href="https://goroute-website.vercel.app"><img src="https://img.shields.io/badge/Website-Live%20on%20Vercel-e24b38?style=flat-square" alt="Website" /></a>
   <a href="https://www.npmjs.com/package/goroute"><img src="https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837" alt="NPM Version" /></a>
@@ -130,6 +131,15 @@ brew install ziuus/goroute/goroute
 ### Option D: Go Toolchain
 ```bash
 go install github.com/ziuus/goroute/cmd/goroute@latest
+```
+
+### Option E: Arch Linux (AUR)
+```bash
+# Using yay:
+yay -S goroute-bin
+
+# Or using paru:
+paru -S goroute-bin
 ```
 
 ---
