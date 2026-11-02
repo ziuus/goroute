@@ -630,6 +630,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// Read buffer for eventstream
 		buf := make([]byte, 0, 64*1024)
 		readBuf := make([]byte, 4096)
+		toolCallIdx := 0
 
 		for {
 			n, rErr := resp.Body.Read(readBuf)
@@ -750,7 +751,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 											"delta": map[string]interface{}{
 												"tool_calls": []map[string]interface{}{
 													{
-														"index": 0,
+														"index": toolCallIdx,
 														"id":    evt.ToolUseId,
 														"type":  "function",
 														"function": map[string]string{
@@ -764,6 +765,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 										},
 									},
 								}
+								toolCallIdx++
 								chunkBytes, _ := json.Marshal(chunk)
 								fmt.Fprintf(pw, "data: %s\n\n", string(chunkBytes))
 							}

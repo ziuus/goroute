@@ -54,6 +54,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 		scanner.Buffer(buf, 1024*1024)
 
 		now := time.Now().Unix()
+		toolCallIndex := 0
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -108,7 +109,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 								"delta": map[string]interface{}{
 									"tool_calls": []map[string]interface{}{
 										{
-											"index": 0,
+											"index": toolCallIndex,
 											"id":    callID,
 											"type":  "function",
 											"function": map[string]string{
@@ -122,6 +123,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 							},
 						},
 					}
+					toolCallIndex++
 					data, _ := json.Marshal(toolCallChunk)
 					fmt.Fprintf(pw, "data: %s\n\n", data)
 					continue

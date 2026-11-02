@@ -389,6 +389,7 @@ type StreamToolCall struct {
 	Name         string
 	BlockIndex   int
 	StartEmitted bool
+	StopEmitted  bool
 	ArgsBuf      strings.Builder
 	TotalArgs    strings.Builder
 }
@@ -408,6 +409,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	blockIndex := 0
 	stopReason := "end_turn"
 	seenTools := make(map[int]*StreamToolCall)
+	var allToolStates []*StreamToolCall
 	xmlParser := NewXmlStreamParser()
 
 	for scanner.Scan() {
@@ -512,11 +514,45 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 				for _, tc := range choice.Delta.ToolCalls {
 					stopReason = "tool_use"
 					toolState, exists := seenTools[tc.Index]
-					if !exists {
+
+					// Check if this tool call represents a NEW invocation at the same index:
+					// 1) Different tool ID
+					// 2) Different tool Name
+					// 3) New arguments starting with '{' when previous arguments already form a complete JSON object
+					isNewTool := false
+					if exists && toolState.StartEmitted {
+						if tc.ID != "" && toolState.ID != "" && tc.ID != toolState.ID {
+							isNewTool = true
+						} else if tc.Function.Name != "" && toolState.Name != "" && tc.Function.Name != toolState.Name {
+							isNewTool = true
+						} else if tc.Function.Arguments != "" && strings.HasPrefix(strings.TrimSpace(tc.Function.Arguments), "{") && toolState.TotalArgs.Len() > 0 {
+							var dummy map[string]interface{}
+							if json.Unmarshal([]byte(strings.TrimSpace(toolState.TotalArgs.String())), &dummy) == nil {
+								isNewTool = true
+							}
+						}
+					}
+
+					if isNewTool {
+						if !toolState.StopEmitted {
+							fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
+							if flusher != nil {
+								flusher.Flush()
+							}
+							toolState.StopEmitted = true
+						}
 						toolState = &StreamToolCall{
 							BlockIndex: -1,
 						}
 						seenTools[tc.Index] = toolState
+						allToolStates = append(allToolStates, toolState)
+						exists = false
+					} else if !exists {
+						toolState = &StreamToolCall{
+							BlockIndex: -1,
+						}
+						seenTools[tc.Index] = toolState
+						allToolStates = append(allToolStates, toolState)
 					}
 
 					if tc.ID != "" && toolState.ID == "" {
@@ -539,6 +575,18 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 							inTextBlock = false
 							blockIndex++
 						}
+
+						// Close any previously active tool block that hasn't been stopped
+						for _, prev := range allToolStates {
+							if prev != toolState && prev.StartEmitted && !prev.StopEmitted {
+								fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", prev.BlockIndex)
+								prev.StopEmitted = true
+								if flusher != nil {
+									flusher.Flush()
+								}
+							}
+						}
+
 						toolState.BlockIndex = blockIndex
 						blockIndex++
 
@@ -621,8 +669,8 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
 	}
 	var activeTools []*StreamToolCall
-	for _, toolState := range seenTools {
-		if toolState.StartEmitted {
+	for _, toolState := range allToolStates {
+		if toolState.StartEmitted && !toolState.StopEmitted {
 			activeTools = append(activeTools, toolState)
 		}
 	}
@@ -656,6 +704,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 			}
 		}
 		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
+		toolState.StopEmitted = true
 	}
 	// Send message_delta
 	fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", stopReason, outputTokens)

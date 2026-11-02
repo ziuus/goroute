@@ -252,3 +252,44 @@ data: [DONE]
 		t.Errorf("expected stop_reason 'tool_use', got:\n%s", out)
 	}
 }
+
+func TestTranslateOpenAIToAnthropicSSE_ParallelAndReusedIndexToolCalls(t *testing.T) {
+	// Simulate parallel tool calls where an upstream provider emits two distinct tool calls
+	// (e.g. Skill "artifact-design" and Skill "three") at index 0.
+	openAISSE := `data: {"choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "toolu_1", "type": "function", "function": {"name": "Skill", "arguments": "{\"skill\":\"artifact-design\"}"}}]}, "finish_reason": null}]}
+
+data: {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "toolu_2", "type": "function", "function": {"name": "Skill", "arguments": "{\"skill\":\"three\"}"}}]}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+`
+	var buf bytes.Buffer
+	translateOpenAIToAnthropicSSE(strings.NewReader(openAISSE), &buf, nil, "claude-test")
+
+	out := buf.String()
+	t.Logf("OUTPUT:\n%s", out)
+
+	// Must NOT concatenate {"skill":"artifact-design"}{"skill":"three"} in a single delta or block!
+	if strings.Contains(out, `}{`) || strings.Contains(out, `"artifact-design"}{"three"`) {
+		t.Fatalf("critical error: tool calls were concatenated into invalid JSON:\n%s", out)
+	}
+
+	// Must have exactly 2 distinct content_block_start events
+	startCount := strings.Count(out, `"type":"content_block_start"`)
+	if startCount != 2 {
+		t.Errorf("expected exactly 2 content_block_start events, got %d:\n%s", startCount, out)
+	}
+
+	// Must have exactly 2 content_block_stop events
+	stopCount := strings.Count(out, `"type":"content_block_stop"`)
+	if stopCount != 2 {
+		t.Errorf("expected exactly 2 content_block_stop events, got %d:\n%s", stopCount, out)
+	}
+
+	// Must contain both tool IDs and inputs
+	if !strings.Contains(out, `"id":"toolu_1"`) || !strings.Contains(out, `"id":"toolu_2"`) {
+		t.Errorf("expected toolu_1 and toolu_2 in output:\n%s", out)
+	}
+	if !strings.Contains(out, `artifact-design`) || !strings.Contains(out, `three`) {
+		t.Errorf("expected both tool arguments in output:\n%s", out)
+	}
+}
