@@ -22,6 +22,10 @@
 </p>
 
 <p align="center">
+  <a href="https://www.producthunt.com/posts/goroute?embed=true&utm_source=badge-featured&utm_medium=badge&utm_souce=badge-goroute" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1301394&theme=light" alt="GoRoute - Sub-millisecond AI gateway for coding agents | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+</p>
+
+<p align="center">
   <a href="https://goroute-website.vercel.app">Official Website</a> &bull;
   <a href="#overview">Overview</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
