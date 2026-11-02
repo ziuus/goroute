@@ -456,6 +456,21 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 		if err := json.Unmarshal(data, &chunk); err == nil && len(chunk.Choices) > 0 {
 			choice := chunk.Choices[0]
 
+			if choice.FinishReason != "" {
+				switch choice.FinishReason {
+				case "tool_calls", "function_call":
+					stopReason = "tool_use"
+				case "length":
+					stopReason = "max_tokens"
+				case "content_filter":
+					stopReason = "stop_sequence"
+				case "stop":
+					if stopReason != "tool_use" {
+						stopReason = "end_turn"
+					}
+				}
+			}
+
 			// Handle text content via xmlParser
 			if choice.Delta.Content != "" {
 				cleanText, xmlCalls := xmlParser.Feed(choice.Delta.Content)

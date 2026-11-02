@@ -55,6 +55,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 
 		now := time.Now().Unix()
 		toolCallIndex := 0
+		var lastGeminiFinishReason string
 
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -79,6 +80,9 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 			}
 
 			candidate := gChunk.Response.Candidates[0]
+			if candidate.FinishReason != "" {
+				lastGeminiFinishReason = candidate.FinishReason
+			}
 			var latestSig string
 			for _, part := range candidate.Content.Parts {
 				if part.ThoughtSignature != "" {
@@ -158,6 +162,18 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 
 		// Emit final finish_reason chunk required by OpenAI spec before [DONE]
 		stopReason := "stop"
+		if toolCallIndex > 0 {
+			stopReason = "tool_calls"
+		} else if lastGeminiFinishReason != "" {
+			switch strings.ToUpper(lastGeminiFinishReason) {
+			case "MAX_TOKENS":
+				stopReason = "length"
+			case "SAFETY":
+				stopReason = "content_filter"
+			case "STOP":
+				stopReason = "stop"
+			}
+		}
 		finalChunk := openAIStreamChunk{
 			ID:      "chatcmpl-goroute",
 			Object:  "chat.completion.chunk",
@@ -219,6 +235,18 @@ func ConvertGeminiSSEToNonStreaming(rawStream io.ReadCloser, modelName string) (
 		}
 
 		candidate := gChunk.Response.Candidates[0]
+		if candidate.FinishReason != "" {
+			switch strings.ToUpper(candidate.FinishReason) {
+			case "MAX_TOKENS":
+				if finishReason != "tool_calls" {
+					finishReason = "length"
+				}
+			case "SAFETY":
+				if finishReason != "tool_calls" {
+					finishReason = "content_filter"
+				}
+			}
+		}
 		var latestSig string
 		for _, part := range candidate.Content.Parts {
 			if part.ThoughtSignature != "" {
