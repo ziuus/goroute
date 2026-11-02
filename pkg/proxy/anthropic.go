@@ -27,6 +27,7 @@ type AnthropicMessageRequest struct {
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 	Tools       []interface{}          `json:"tools,omitempty"`
 	ToolChoice  interface{}            `json:"tool_choice,omitempty"`
+	Thinking    interface{}            `json:"thinking,omitempty"`
 }
 
 type AnthropicMessage struct {
@@ -163,6 +164,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		Temperature: req.Temperature,
 		Tools:       translateAnthropicToolsToOpenAI(req.Tools),
 		ToolChoice:  req.ToolChoice,
+		Thinking:    req.Thinking,
 		Messages:    make([]providers.ChatMessage, 0, len(req.Messages)+1),
 	}
 
@@ -311,17 +313,24 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	if len(openAIResp.Choices) > 0 && len(openAIResp.Choices[0].Message.ToolCalls) > 0 {
 		stopReason = "tool_use"
 		for _, tc := range openAIResp.Choices[0].Message.ToolCalls {
-			var inputObj map[string]interface{}
-			_ = json.Unmarshal([]byte(tc.Function.Arguments), &inputObj)
-			if inputObj == nil {
-				inputObj = map[string]interface{}{}
+			argObjs := ExtractJSONObjects(tc.Function.Arguments)
+			for i, objStr := range argObjs {
+				var inputObj map[string]interface{}
+				_ = json.Unmarshal([]byte(objStr), &inputObj)
+				if inputObj == nil {
+					inputObj = map[string]interface{}{}
+				}
+				callID := tc.ID
+				if i > 0 {
+					callID = fmt.Sprintf("%s_%d", tc.ID, i)
+				}
+				contentBlocks = append(contentBlocks, map[string]interface{}{
+					"type":  "tool_use",
+					"id":    callID,
+					"name":  tc.Function.Name,
+					"input": inputObj,
+				})
 			}
-			contentBlocks = append(contentBlocks, map[string]interface{}{
-				"type":  "tool_use",
-				"id":    tc.ID,
-				"name":  tc.Function.Name,
-				"input": inputObj,
-			})
 		}
 	}
 
@@ -613,34 +622,138 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 						// Flush any arguments buffered before tool name was known
 						if toolState.ArgsBuf.Len() > 0 {
 							bufferedArgs := toolState.ArgsBuf.String()
-							toolState.TotalArgs.WriteString(bufferedArgs)
 							toolState.ArgsBuf.Reset()
+							argObjs := ExtractJSONObjects(bufferedArgs)
+							for i, objStr := range argObjs {
+								if i == 0 {
+									toolState.TotalArgs.WriteString(objStr)
+									argsJSON, _ := json.Marshal(map[string]interface{}{
+										"type":  "content_block_delta",
+										"index": toolState.BlockIndex,
+										"delta": map[string]string{
+											"type":         "input_json_delta",
+											"partial_json": objStr,
+										},
+									})
+									fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+									if len(argObjs) > 1 {
+										fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
+										toolState.StopEmitted = true
+									}
+									if flusher != nil {
+										flusher.Flush()
+									}
+								} else {
+									nextTool := &StreamToolCall{
+										BlockIndex:   blockIndex,
+										ID:           fmt.Sprintf("%s_%d", toolState.ID, i),
+										Name:         toolState.Name,
+										StartEmitted: true,
+										StopEmitted:  true,
+									}
+									blockIndex++
+									allToolStates = append(allToolStates, nextTool)
+									seenTools[tc.Index] = nextTool
+
+									toolStartJSON, _ := json.Marshal(map[string]interface{}{
+										"type":  "content_block_start",
+										"index": nextTool.BlockIndex,
+										"content_block": map[string]interface{}{
+											"type":  "tool_use",
+											"id":    nextTool.ID,
+											"name":  nextTool.Name,
+											"input": map[string]interface{}{},
+										},
+									})
+									fmt.Fprintf(w, "event: content_block_start\ndata: %s\n\n", string(toolStartJSON))
+									argsJSON, _ := json.Marshal(map[string]interface{}{
+										"type":  "content_block_delta",
+										"index": nextTool.BlockIndex,
+										"delta": map[string]string{
+											"type":         "input_json_delta",
+											"partial_json": objStr,
+										},
+									})
+									fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+									fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", nextTool.BlockIndex)
+									if flusher != nil {
+										flusher.Flush()
+									}
+								}
+							}
+						}
+					} else if toolState.StartEmitted && tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
+						argObjs := ExtractJSONObjects(tc.Function.Arguments)
+						if len(argObjs) > 1 {
+							for i, objStr := range argObjs {
+								if i == 0 {
+									toolState.TotalArgs.WriteString(objStr)
+									argsJSON, _ := json.Marshal(map[string]interface{}{
+										"type":  "content_block_delta",
+										"index": toolState.BlockIndex,
+										"delta": map[string]string{
+											"type":         "input_json_delta",
+											"partial_json": objStr,
+										},
+									})
+									fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+									fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", toolState.BlockIndex)
+									toolState.StopEmitted = true
+									if flusher != nil {
+										flusher.Flush()
+									}
+								} else {
+									nextTool := &StreamToolCall{
+										BlockIndex:   blockIndex,
+										ID:           fmt.Sprintf("%s_%d", toolState.ID, i),
+										Name:         toolState.Name,
+										StartEmitted: true,
+										StopEmitted:  true,
+									}
+									blockIndex++
+									allToolStates = append(allToolStates, nextTool)
+									seenTools[tc.Index] = nextTool
+
+									toolStartJSON, _ := json.Marshal(map[string]interface{}{
+										"type":  "content_block_start",
+										"index": nextTool.BlockIndex,
+										"content_block": map[string]interface{}{
+											"type":  "tool_use",
+											"id":    nextTool.ID,
+											"name":  nextTool.Name,
+											"input": map[string]interface{}{},
+										},
+									})
+									fmt.Fprintf(w, "event: content_block_start\ndata: %s\n\n", string(toolStartJSON))
+									argsJSON, _ := json.Marshal(map[string]interface{}{
+										"type":  "content_block_delta",
+										"index": nextTool.BlockIndex,
+										"delta": map[string]string{
+											"type":         "input_json_delta",
+											"partial_json": objStr,
+										},
+									})
+									fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+									fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", nextTool.BlockIndex)
+									if flusher != nil {
+										flusher.Flush()
+									}
+								}
+							}
+						} else {
+							toolState.TotalArgs.WriteString(tc.Function.Arguments)
 							argsJSON, _ := json.Marshal(map[string]interface{}{
 								"type":  "content_block_delta",
 								"index": toolState.BlockIndex,
 								"delta": map[string]string{
 									"type":         "input_json_delta",
-									"partial_json": bufferedArgs,
+									"partial_json": tc.Function.Arguments,
 								},
 							})
 							fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
 							if flusher != nil {
 								flusher.Flush()
 							}
-						}
-					} else if toolState.StartEmitted && tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
-						toolState.TotalArgs.WriteString(tc.Function.Arguments)
-						argsJSON, _ := json.Marshal(map[string]interface{}{
-							"type":  "content_block_delta",
-							"index": toolState.BlockIndex,
-							"delta": map[string]string{
-								"type":         "input_json_delta",
-								"partial_json": tc.Function.Arguments,
-							},
-						})
-						fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
-						if flusher != nil {
-							flusher.Flush()
 						}
 					}
 				}
@@ -713,6 +826,30 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	if flusher != nil {
 		flusher.Flush()
 	}
+}
+
+// ExtractJSONObjects extracts multiple top-level JSON objects from a string,
+// repairing concatenated JSON payloads generated by upstream LLMs or gateways.
+func ExtractJSONObjects(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	dec := json.NewDecoder(strings.NewReader(trimmed))
+	var objs []string
+	for {
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			break
+		}
+		if len(v) > 0 {
+			objs = append(objs, string(v))
+		}
+	}
+	if len(objs) == 0 {
+		return []string{raw}
+	}
+	return objs
 }
 
 // translateAnthropicToolsToOpenAI converts Anthropic tool specs (input_schema) into OpenAI function specs

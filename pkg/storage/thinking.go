@@ -66,22 +66,48 @@ func InitThinkingBudget(db *DBStore) {
 }
 
 // ApplyThinkingBudget modifies a request's reasoning tokens or effort based on policy.
-func ApplyThinkingBudget(reasoningEffort *string, maxTokens *int) {
+func ApplyThinkingBudget(reasoningEffort *string, maxTokens *int, thinking *interface{}) {
 	cfg := GetThinkingBudgetConfig()
 	switch cfg.Mode {
 	case "auto":
-		// Strip client reasoning effort
+		// Strip client reasoning effort and thinking
 		if reasoningEffort != nil {
 			*reasoningEffort = ""
 		}
+		if thinking != nil {
+			*thinking = nil
+		}
 	case "custom":
 		if maxTokens != nil && cfg.CustomBudget > 0 {
-			*maxTokens = cfg.CustomBudget
+			if *maxTokens <= 0 || *maxTokens > cfg.CustomBudget {
+				*maxTokens = cfg.CustomBudget
+			}
 		}
 		if reasoningEffort != nil && cfg.EffortLevel != "" {
 			*reasoningEffort = cfg.EffortLevel
 		}
 	case "adaptive":
+		// Cap reasoning budget at CustomBudget (default 4000) to prevent runaway token burns
+		capBudget := cfg.CustomBudget
+		if capBudget <= 0 {
+			capBudget = 4000
+		}
+		if thinking != nil && *thinking != nil {
+			if thMap, ok := (*thinking).(map[string]interface{}); ok {
+				if bVal, hasBudget := thMap["budget_tokens"]; hasBudget {
+					var b int
+					switch v := bVal.(type) {
+					case float64:
+						b = int(v)
+					case int:
+						b = v
+					}
+					if b > capBudget {
+						thMap["budget_tokens"] = capBudget
+					}
+				}
+			}
+		}
 		if reasoningEffort != nil && *reasoningEffort == "" {
 			*reasoningEffort = cfg.EffortLevel
 		}

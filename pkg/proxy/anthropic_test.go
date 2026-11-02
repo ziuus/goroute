@@ -293,3 +293,38 @@ data: [DONE]
 		t.Errorf("expected both tool arguments in output:\n%s", out)
 	}
 }
+
+func TestTranslateOpenAIToAnthropicSSE_ConcatenatedJSONChunk(t *testing.T) {
+	// Simulate an upstream LLM or gateway emitting concatenated JSON objects within a SINGLE chunk's arguments:
+	// {"skill":"artifact-design"}{"skill":"three"}
+	openAISSE := `data: {"choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [{"index": 0, "id": "toolu_single", "type": "function", "function": {"name": "Skill", "arguments": "{\"skill\":\"artifact-design\"}{\"skill\":\"three\"}"}}]}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+`
+	var buf bytes.Buffer
+	translateOpenAIToAnthropicSSE(strings.NewReader(openAISSE), &buf, nil, "claude-test")
+
+	out := buf.String()
+	t.Logf("OUTPUT:\n%s", out)
+
+	// Must split concatenated JSON objects so client never receives invalid JSON in input_json_delta
+	if strings.Contains(out, `"partial_json":"{\"skill\":\"artifact-design\"}{\"skill\":\"three\"}"`) {
+		t.Fatalf("critical error: concatenated JSON was not repaired into separate tool blocks:\n%s", out)
+	}
+
+	// Must have exactly 2 distinct content_block_start events
+	startCount := strings.Count(out, `"type":"content_block_start"`)
+	if startCount != 2 {
+		t.Errorf("expected exactly 2 content_block_start events, got %d:\n%s", startCount, out)
+	}
+
+	// Must have exactly 2 content_block_stop events
+	stopCount := strings.Count(out, `"type":"content_block_stop"`)
+	if stopCount != 2 {
+		t.Errorf("expected exactly 2 content_block_stop events, got %d:\n%s", stopCount, out)
+	}
+
+	if !strings.Contains(out, `artifact-design`) || !strings.Contains(out, `three`) {
+		t.Errorf("expected both tool arguments in output:\n%s", out)
+	}
+}

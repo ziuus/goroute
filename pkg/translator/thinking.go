@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/storage"
 )
 
 // NormalizeReasoningEffort ensures reasoning_effort conforms to standard tiers: minimal, low, medium, high
@@ -50,6 +51,9 @@ func TranslateThinking(providerID, providerType string, req *providers.ChatReque
 	if req == nil {
 		return
 	}
+
+	// Apply thinking budget policy to prevent runaway token burns and unconstrained reasoning
+	storage.ApplyThinkingBudget(&req.ReasoningEffort, req.MaxTokens, &req.Thinking)
 
 	modelLower := strings.ToLower(req.Model)
 
