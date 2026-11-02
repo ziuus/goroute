@@ -719,15 +719,11 @@ func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *p
 		}
 		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d (%s), trying next target...", target.ProviderID, target.Model, statusCode, errReason)
 
-		// Cooldown policy: only mark cooldown on rate limit (429) or upstream server outages (500/502/503/504).
-		// Client payload errors (400 Bad Request, 422 Unprocessable) do NOT mark cooldown, preventing
-		// invalid client inputs from locking out healthy upstream targets for all subsequent traffic.
+		// Cooldown policy: classify failure using resilience engine. Transient rate limits (60s)
+		// and 5xx outages (20s) use short cooloffs; daily quota exhaustion gets 1h; 400/422 are skipped.
 		if statusCode != 400 && statusCode != 422 {
-			cooldownDuration := 10 * time.Minute
-			if statusCode == 429 && resilience.IsDailyQuotaExhausted(errReason) {
-				cooldownDuration = 1 * time.Hour
-			}
-			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, errReason, cooldownDuration)
+			pf := resilience.ClassifyFailure(target.ProviderID, statusCode, errReason, 0)
+			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, errReason, pf.LockoutDelay)
 		}
 		lastStatus = statusCode
 		lastErr = fmt.Errorf("target %s/%s returned HTTP %d: %s", target.ProviderID, target.Model, statusCode, errReason)

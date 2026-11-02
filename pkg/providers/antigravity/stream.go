@@ -51,7 +51,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 
 		scanner := bufio.NewScanner(rawStream)
 		buf := make([]byte, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
+		scanner.Buffer(buf, 16*1024*1024)
 
 		now := time.Now().Unix()
 		toolCallIndex := 0
@@ -190,7 +190,7 @@ func ConvertGeminiSSEToNonStreaming(rawStream io.ReadCloser, modelName string) (
 
 	scanner := bufio.NewScanner(rawStream)
 	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
 
 	var contentBuilder strings.Builder
 	var toolCalls []map[string]interface{}

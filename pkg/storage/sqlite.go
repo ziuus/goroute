@@ -62,6 +62,10 @@ func InitDB(dbPath string) (*DBStore, error) {
 	}
 
 	// High concurrency tuning for SQLite in WAL mode
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(10 * time.Minute)
+
 	if _, err := db.Exec(`
 		PRAGMA journal_mode = WAL;
 		PRAGMA synchronous = NORMAL;

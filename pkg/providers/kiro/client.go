@@ -973,7 +973,7 @@ func buildNormalizedTurns(messages []providers.ChatMessage) []normalizedTurn {
 				}
 				if resContent == "" {
 					resContent = "(no output)"
-				} else if len(resContent) > 200 {
+				} else if len(resContent) > 200 && (strings.EqualFold(m.Name, "bash") || strings.EqualFold(m.Name, "terminal") || strings.EqualFold(m.Name, "exec")) {
 					filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
 					resContent = filtered.Output
 				}
@@ -1014,7 +1014,7 @@ func buildNormalizedTurns(messages []providers.ChatMessage) []normalizedTurn {
 							}
 							if resContent == "" {
 								resContent = "(no output)"
-							} else if len(resContent) > 200 {
+							} else if len(resContent) > 200 && (strings.EqualFold(m.Name, "bash") || strings.EqualFold(m.Name, "terminal") || strings.EqualFold(m.Name, "exec")) {
 								filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
 								resContent = filtered.Output
 							}

@@ -5004,6 +5004,7 @@ func (s *Server) handleSetRouterQuota(w http.ResponseWriter, r *http.Request) {
 
 func consolidateSSEStream(body io.Reader, model string) ([]byte, error) {
 	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	var fullContent strings.Builder
 	var toolCalls []map[string]interface{}
 	finishReason := "stop"

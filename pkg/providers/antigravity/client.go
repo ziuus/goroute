@@ -16,6 +16,7 @@ import (
 	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/pool"
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/resilience"
 	"github.com/ziuus/goroute/pkg/rtk"
 )
 
@@ -709,7 +710,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				name = SanitizeGeminiToolName(name)
 				var respMap map[string]interface{}
 				if str, ok := msg.Content.(string); ok {
-					if len(str) > 200 {
+					// Only filter command outputs if tool is an execution tool (e.g. bash, terminal).
+					// Never filter file reads (Read, read_file, cat, view) or code content!
+					isExecTool := strings.EqualFold(name, "bash") || strings.EqualFold(name, "terminal") || strings.EqualFold(name, "exec") || strings.EqualFold(name, "cmd")
+					if isExecTool && len(str) > 200 {
 						filtered := rtk.GlobalEngine.FilterCommandOutput("", str)
 						str = filtered.Output
 					}
@@ -900,7 +904,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			if accPool == "" {
 				accPool = "pool1"
 			}
-			pool.GlobalPool.SetCooldown(accPool, acc.ID, 10*time.Minute)
+			pf := resilience.ClassifyFailure(p.id, resp.StatusCode, string(respBytes), 0)
+			pool.GlobalPool.SetCooldown(accPool, acc.ID, pf.LockoutDelay)
 			if lastBody != nil {
 				lastBody.Close()
 			}

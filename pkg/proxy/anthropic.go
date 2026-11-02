@@ -249,7 +249,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(statusCode)
 
 		flusher, _ := w.(http.Flusher)
-		translateOpenAIToAnthropicSSE(respBody, w, flusher, req.Model)
+		translateOpenAIToAnthropicSSE(respBody, w, flusher, req.Model, r.Context())
 		RecordRequest(RequestLog{
 			ID:            fmt.Sprintf("req_%d", time.Now().UnixNano()),
 			Timestamp:     start,
@@ -403,7 +403,7 @@ type StreamToolCall struct {
 	TotalArgs    strings.Builder
 }
 
-func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http.Flusher, model string) {
+func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http.Flusher, model string, optCtx ...context.Context) {
 	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 
 	// Send message_start
@@ -413,6 +413,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	}
 
 	scanner := bufio.NewScanner(upstream)
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	outputTokens := 0
 	inTextBlock := false
 	blockIndex := 0
@@ -422,6 +423,9 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 	xmlParser := NewXmlStreamParser()
 
 	for scanner.Scan() {
+		if len(optCtx) > 0 && optCtx[0] != nil && optCtx[0].Err() != nil {
+			break
+		}
 		line := scanner.Bytes()
 		if !bytes.HasPrefix(line, []byte("data: ")) {
 			continue
