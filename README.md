@@ -125,7 +125,7 @@ curl -fsSL https://raw.githubusercontent.com/ziuus/goroute/main/install.sh | bas
 
 ### Option C: Homebrew (macOS & Linux)
 ```bash
-brew install ziuus/goroute/goroute
+brew install ziuus/tap/goroute
 ```
 
 ### Option D: Go Toolchain
