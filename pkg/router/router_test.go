@@ -327,7 +327,11 @@ func (m *schemaEdgeCaseProvider) ChatCompletion(ctx context.Context, req *provid
 	return io.NopCloser(bytes.NewReader(b)), false, http.StatusOK, nil
 }
 
-func TestRouterFailoverSchemaValidationEdgeCase(t *testing.T) {
+// TestRouterFailoverSchemaPreservation verifies that GoRoute properly maintains
+// application-level constraints (like format: email) during provider failovers.
+// Note: GoRoute acts as a transparent gateway; it preserves the schema but does
+// not independently validate or enforce the generated tool-call arguments.
+func TestRouterFailoverSchemaPreservation(t *testing.T) {
 	primary := &schemaEdgeCaseProvider{id: "primaryEdge", shouldFail: true, failCode: http.StatusTooManyRequests} // 429
 	backup := &schemaEdgeCaseProvider{id: "backupEdge", shouldFail: false}
 
