@@ -39,6 +39,12 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+> Building this in the open — if it saves you time, a star helps others find it.
+> Found a bug, or have an idea? [Open an issue](https://github.com/ziuus/goroute/issues).
+> New here? Start with a [good first issue](https://github.com/ziuus/goroute/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+> Questions and ideas? Say hello in [Discussions](https://github.com/ziuus/goroute/discussions).
+> New provider adapters and routing ideas welcome.
+
 ---
 
 ## Overview
