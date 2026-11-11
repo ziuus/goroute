@@ -5,6 +5,7 @@ import {
   Activity,
   Globe,
   Cpu,
+  Brain,
   CheckCircle,
   XCircle,
   HelpCircle,
@@ -157,9 +158,13 @@ export default function GoRouteDashboard() {
   const [inspectingLog, setInspectingLog] = useState<any | null>(null);
   
   // Playground state
-  const [playgroundModel, setPlaygroundModel] = useState('claude-3-7-sonnet');
-  const [playgroundPrompt, setPlaygroundPrompt] = useState('Write a concise Go HTTP handler that returns JSON.');
+  const [playgroundModel, setPlaygroundModel] = useState('deepseek-r1');
+  const [playgroundPrompt, setPlaygroundPrompt] = useState('Why is the sky blue? Think step-by-step.');
   const [playgroundResponse, setPlaygroundResponse] = useState('');
+  const [playgroundReasoning, setPlaygroundReasoning] = useState('');
+  const [reasoningCollapsed, setReasoningCollapsed] = useState(false);
+  const [reasoningDuration, setReasoningDuration] = useState<number | null>(null);
+  const [isThinking, setIsThinking] = useState(false);
   const [playgroundLoading, setPlaygroundLoading] = useState(false);
   const [playgroundMeta, setPlaygroundMeta] = useState<any>(null);
 
@@ -913,8 +918,16 @@ wire_api = "responses"`;
     if (!playgroundPrompt.trim()) return;
     setPlaygroundLoading(true);
     setPlaygroundResponse('');
+    setPlaygroundReasoning('');
+    setReasoningDuration(null);
+    setIsThinking(false);
+    setReasoningCollapsed(false);
     setPlaygroundMeta(null);
     const start = Date.now();
+    let reasoningStartTime = start;
+    let accumulatedReasoning = '';
+    let accumulatedContent = '';
+    let inThinkTag = false;
 
     try {
       const res = await fetch('/v1/chat/completions', {
@@ -922,27 +935,143 @@ wire_api = "responses"`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: playgroundModel,
-          messages: [{ role: 'user', content: playgroundPrompt }]
+          messages: [{ role: 'user', content: playgroundPrompt }],
+          stream: true
         })
       });
 
-      const data = await res.json();
-      const elapsed = Date.now() - start;
+      if (!res.ok) {
+        let errMsg = `HTTP Error ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData?.error?.message) errMsg = errData.error.message;
+        } catch (_) {}
+        setPlaygroundResponse(`Error: ${errMsg}`);
+        return;
+      }
 
-      if (data.choices && data.choices[0]?.message) {
-        setPlaygroundResponse(data.choices[0].message.content);
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') continue;
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const chunk = JSON.parse(trimmed.slice(6));
+                const delta = chunk.choices?.[0]?.delta;
+                if (!delta) continue;
+
+                // 1. Direct reasoning_content (DeepSeek API, Ollama, vLLM format)
+                if (delta.reasoning_content) {
+                  if (!accumulatedReasoning) {
+                    reasoningStartTime = Date.now();
+                    setIsThinking(true);
+                  }
+                  accumulatedReasoning += delta.reasoning_content;
+                  setPlaygroundReasoning(accumulatedReasoning);
+                  setReasoningDuration(Math.round((Date.now() - reasoningStartTime) / 100) / 10);
+                }
+
+                // 2. Content delta which may contain <think> tags or standard output
+                if (delta.content) {
+                  let text = delta.content;
+
+                  if (text.includes('<think>')) {
+                    inThinkTag = true;
+                    setIsThinking(true);
+                    reasoningStartTime = Date.now();
+                    const parts = text.split('<think>');
+                    accumulatedContent += parts[0];
+                    text = parts.slice(1).join('<think>');
+                  }
+
+                  if (inThinkTag) {
+                    if (text.includes('</think>')) {
+                      inThinkTag = false;
+                      setIsThinking(false);
+                      const parts = text.split('</think>');
+                      accumulatedReasoning += parts[0];
+                      accumulatedContent += parts.slice(1).join('</think>');
+                      setPlaygroundReasoning(accumulatedReasoning);
+                      setReasoningDuration(Math.round((Date.now() - reasoningStartTime) / 100) / 10);
+                    } else {
+                      accumulatedReasoning += text;
+                      setPlaygroundReasoning(accumulatedReasoning);
+                      setReasoningDuration(Math.round((Date.now() - reasoningStartTime) / 100) / 10);
+                    }
+                  } else {
+                    if (accumulatedReasoning && isThinking) {
+                      setIsThinking(false);
+                    }
+                    accumulatedContent += text;
+                  }
+
+                  setPlaygroundResponse(accumulatedContent);
+                }
+              } catch (_) {}
+            }
+          }
+        }
+
+        const totalElapsed = Date.now() - start;
+        setIsThinking(false);
+        const estTokens = Math.round((accumulatedReasoning.length + accumulatedContent.length) / 4);
         setPlaygroundMeta({
-          model: data.model || playgroundModel,
-          tokens: data.usage?.total_tokens || 0,
-          latency: `${elapsed}ms`,
+          model: playgroundModel,
+          tokens: estTokens,
+          latency: `${totalElapsed}ms`,
           status: res.status
         });
-      } else if (data.error) {
-        setPlaygroundResponse(`Error: ${data.error.message || JSON.stringify(data.error)}`);
+      } else {
+        // Fallback for standard non-streaming JSON responses
+        const data = await res.json();
+        const elapsed = Date.now() - start;
+
+        if (data.choices && data.choices[0]?.message) {
+          const msg = data.choices[0].message;
+          let content = msg.content || '';
+          let reasoning = msg.reasoning_content || '';
+
+          if (!reasoning && content.includes('<think>')) {
+            const match = content.match(/<think>([\s\S]*?)<\/think>/i);
+            if (match) {
+              reasoning = match[1].trim();
+              content = content.replace(/<think>[\s\S]*?<\/think>/i, '').trim();
+            }
+          }
+
+          if (reasoning) {
+            setPlaygroundReasoning(reasoning);
+            setReasoningDuration(Math.round(elapsed / 100) / 10);
+          }
+          setPlaygroundResponse(content);
+          setPlaygroundMeta({
+            model: data.model || playgroundModel,
+            tokens: data.usage?.total_tokens || Math.round((reasoning.length + content.length) / 4),
+            latency: `${elapsed}ms`,
+            status: res.status
+          });
+        } else if (data.error) {
+          setPlaygroundResponse(`Error: ${data.error.message || JSON.stringify(data.error)}`);
+        }
       }
     } catch (e: any) {
       setPlaygroundResponse(`Network error: ${e.message}`);
     } finally {
+      setIsThinking(false);
       setPlaygroundLoading(false);
     }
   };
@@ -3625,6 +3754,7 @@ wire_api = "responses"`;
                     <option value="auto">auto (Fast Cascade)</option>
                   </optgroup>
                   <optgroup label="Direct Models">
+                    <option value="deepseek-r1">deepseek-r1 (Reasoning)</option>
                     <option value="claude-3-7-sonnet">claude-3-7-sonnet</option>
                     <option value="claude-3-5-sonnet">claude-3-5-sonnet</option>
                     <option value="gpt-4o">gpt-4o</option>
@@ -3655,21 +3785,69 @@ wire_api = "responses"`;
             </div>
 
             <div className="flex flex-col justify-between bg-slate-50 dark:bg-slate-800/40 p-6 dark:bg-black/20">
-              <div>
-                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 dark:border-slate-800">
-                  <h3 className="text-sm font-semibold tracking-tight">Streaming Output</h3>
+              <div className="flex-1 flex flex-col min-h-0">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold tracking-tight">Streaming Output</h3>
+                    {isThinking && (
+                      <span className="flex items-center gap-1.5 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                        <Brain className="h-3 w-3 animate-pulse" />
+                        Thinking...
+                      </span>
+                    )}
+                  </div>
                   {playgroundMeta && (
                     <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
                       {playgroundMeta.latency} • {playgroundMeta.tokens} tok
                     </span>
                   )}
                 </div>
-                <div className="mt-4 max-h-[440px] overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200">
-                  {playgroundResponse || (
-                    <span className="italic text-slate-400 dark:text-slate-500">
-                      Click 'Send Request' to trigger live inference through GoRoute...
-                    </span>
+
+                <div className="mt-4 flex-1 overflow-y-auto space-y-3 custom-scrollbar max-h-[480px]">
+                  {/* REASONING ACCORDION CARD (DeepSeek R1 / Reasoning Models) */}
+                  {playgroundReasoning && (
+                    <div className="rounded-xl border border-purple-500/20 bg-purple-50/60 dark:bg-purple-950/20 overflow-hidden transition-all duration-200">
+                      <button
+                        type="button"
+                        onClick={() => setReasoningCollapsed(!reasoningCollapsed)}
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 text-left hover:bg-purple-500/5 transition select-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Brain className={`h-4 w-4 ${isThinking ? 'text-purple-500 animate-pulse' : 'text-purple-600 dark:text-purple-400'}`} />
+                          <span className="text-xs font-semibold text-purple-900 dark:text-purple-300">
+                            Thought Process
+                          </span>
+                          {reasoningDuration !== null && (
+                            <span className="flex items-center gap-1 rounded bg-purple-500/10 dark:bg-purple-400/10 px-1.5 py-0.5 font-mono text-[10px] text-purple-700 dark:text-purple-300">
+                              <Clock className="h-2.5 w-2.5" />
+                              {reasoningDuration}s
+                            </span>
+                          )}
+                          <span className="font-mono text-[10px] text-purple-600/70 dark:text-purple-400/70">
+                            ~{Math.round(playgroundReasoning.length / 4)} tok
+                          </span>
+                        </div>
+                        <div className="text-purple-600 dark:text-purple-400">
+                          {reasoningCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </div>
+                      </button>
+
+                      {!reasoningCollapsed && (
+                        <div className="border-t border-purple-500/10 px-3.5 py-2.5 bg-white/40 dark:bg-black/20 font-mono text-xs text-purple-950/80 dark:text-purple-200/80 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-scrollbar">
+                          {playgroundReasoning}
+                        </div>
+                      )}
+                    </div>
                   )}
+
+                  {/* FINAL RESPONSE */}
+                  <div className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200">
+                    {playgroundResponse || (!playgroundReasoning && (
+                      <span className="italic text-slate-400 dark:text-slate-500">
+                        Click 'Send Request' to trigger live inference through GoRoute...
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
