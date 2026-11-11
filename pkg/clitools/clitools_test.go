@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ziuus/goroute/pkg/storage"
@@ -98,5 +99,74 @@ func TestGetAndSaveAndDisconnectToolConfig(t *testing.T) {
 	}
 	if _, hasBase := env["ANTHROPIC_BASE_URL"]; hasBase {
 		t.Errorf("expected ANTHROPIC_BASE_URL to be deleted, got %v", detail.Content)
+	}
+}
+
+func TestOpenHandsConfigurationAndDryRun(t *testing.T) {
+	tempHome := t.TempDir()
+	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
+	os.Setenv("HOME", tempHome)
+	os.Setenv("USERPROFILE", tempHome)
+	defer func() {
+		if db := storage.GetDB(); db != nil {
+			_ = db.Close()
+		}
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
+
+	// 1. Verify registered
+	tool, exists := Registry["openhands"]
+	if !exists {
+		t.Fatalf("expected openhands to be registered in Registry")
+	}
+	if tool.SettingsFile != "~/.openhands/config.toml" {
+		t.Errorf("expected settings file ~/.openhands/config.toml, got %s", tool.SettingsFile)
+	}
+
+	// 2. Test DryRun via ApplyTool
+	res, err := ApplyTool(ApplyRequest{
+		ToolID: "openhands",
+		DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("dry run failed: %v", err)
+	}
+	if res["dryRun"] != true {
+		t.Errorf("expected dryRun=true in result: %v", res)
+	}
+
+	// Config file shouldn't exist after dry run
+	expectedPath := filepath.Join(tempHome, ".openhands", "config.toml")
+	if _, err := os.Stat(expectedPath); !os.IsNotExist(err) {
+		t.Errorf("expected config file to not exist after dry run")
+	}
+
+	// 3. Execute actual configuration
+	msg, err := ConfigureTool("openhands")
+	if err != nil {
+		t.Fatalf("ConfigureTool failed: %v", err)
+	}
+	if msg == "" {
+		t.Errorf("expected non-empty success message")
+	}
+
+	data, err := os.ReadFile(expectedPath)
+	if err != nil {
+		t.Fatalf("failed to read created config file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "8128/v1") {
+		t.Errorf("expected config to target GoRoute port 8128/v1, got:\n%s", content)
+	}
+
+	// 4. Verify detection via GetToolConfigDetail
+	detail, err := GetToolConfigDetail("openhands")
+	if err != nil {
+		t.Fatalf("GetToolConfigDetail failed: %v", err)
+	}
+	if !detail.Exists || !detail.Configured {
+		t.Errorf("expected openhands to be detected as existing and configured: %+v", detail)
 	}
 }

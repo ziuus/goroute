@@ -333,6 +333,24 @@ var Registry = map[string]CliTool{
 		DocsURL:        "https://github.com/deepseek-ai",
 		SettingsFile:   "~/.config/deepseek-tui/config.toml",
 	},
+	"openhands": {
+		ID:             "openhands",
+		Name:           "OpenHands",
+		Category:       "autonomous",
+		Description:    "OpenHands (formerly OpenDevin) autonomous AI software developer CLI",
+		DefaultCommand: "openhands",
+		DocsURL:        "https://docs.all-hands.dev",
+		SettingsFile:   "~/.openhands/config.toml",
+	},
+	"opendevin": {
+		ID:             "opendevin",
+		Name:           "OpenDevin",
+		Category:       "autonomous",
+		Description:    "OpenDevin autonomous software engineer (now OpenHands)",
+		DefaultCommand: "opendevin",
+		DocsURL:        "https://docs.all-hands.dev",
+		SettingsFile:   "~/.openhands/config.toml",
+	},
 }
 
 func ListTools() []CliTool {
@@ -458,6 +476,8 @@ func ConfigureTool(id string) (string, error) {
 		return "Configured Warp AI (~/.warp/settings.json)", setupWarp(home)
 	case "deepseek-tui":
 		return "Configured DeepSeek TUI (~/.config/deepseek-tui/config.toml)", setupDeepSeekTUI(home)
+	case "openhands", "opendevin":
+		return "Configured OpenHands (~/.openhands/config.toml)", setupOpenHands(home)
 	default:
 		return "", fmt.Errorf("agent %s not supported for automated configuration", id)
 	}
@@ -913,6 +933,19 @@ func setupDeepSeekTUI(home string) error {
 	content := `base_url = "http://127.0.0.1:8128/v1"
 api_key = "goroute"
 model = "deepseek-chat"
+`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupOpenHands(home string) error {
+	dir := filepath.Join(home, ".openhands")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.toml")
+	content := `[llm]
+model = "goroute/claude-sonnet-4.5"
+base_url = "http://127.0.0.1:8128/v1"
+api_key = "goroute"
+custom_llm_provider = "openai"
 `
 	return os.WriteFile(cfgFile, []byte(content), 0644)
 }
