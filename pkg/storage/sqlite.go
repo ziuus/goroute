@@ -128,6 +128,27 @@ func InitDB(dbPath string) (*DBStore, error) {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS key_value (
+		namespace TEXT NOT NULL,
+		key TEXT NOT NULL,
+		value TEXT NOT NULL,
+		PRIMARY KEY (namespace, key)
+	);
+
+	CREATE TABLE IF NOT EXISTS webhook_deliveries (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		webhook_id TEXT NOT NULL,
+		event_type TEXT NOT NULL,
+		status TEXT NOT NULL,
+		http_status INTEGER,
+		latency_ms INTEGER,
+		error TEXT,
+		payload_snapshot TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook_created ON webhook_deliveries(webhook_id, created_at DESC);
 	`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -567,12 +588,184 @@ func (s *DBStore) GetA2ATaskStats() (map[string]int, error) {
 	return stats, nil
 }
 
-// Close closes the database connection.
+// Checkpoint executes SQLite WAL checkpointing (e.g. TRUNCATE, PASSIVE, FULL, RESTART).
+func (s *DBStore) Checkpoint(mode string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	if mode == "" {
+		mode = "TRUNCATE"
+	}
+	_, err := s.db.Exec(fmt.Sprintf("PRAGMA wal_checkpoint(%s);", mode))
+	return err
+}
+
+// Vacuum executes full SQLite database vacuuming to reclaim fragmented pages.
+func (s *DBStore) Vacuum() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	_, err := s.db.Exec("VACUUM;")
+	return err
+}
+
+// StartWALMaintenance starts a recurring background worker for WAL checkpointing and vacuuming.
+func (s *DBStore) StartWALMaintenance(interval time.Duration) (stop func()) {
+	if interval <= 0 {
+		interval = 15 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	stopChan := make(chan struct{})
+	var once sync.Once
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				_ = s.Checkpoint("TRUNCATE")
+				_ = s.Vacuum()
+			case <-stopChan:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+	return func() {
+		once.Do(func() {
+			close(stopChan)
+		})
+	}
+}
+
+// SetKeyValue persists an entry into the key_value table.
+func (s *DBStore) SetKeyValue(namespace, key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	query := `
+	INSERT INTO key_value (namespace, key, value)
+	VALUES (?, ?, ?)
+	ON CONFLICT(namespace, key) DO UPDATE SET value = excluded.value
+	`
+	_, err := s.db.Exec(query, namespace, key, value)
+	return err
+}
+
+// GetKeyValue retrieves an entry from the key_value table.
+func (s *DBStore) GetKeyValue(namespace, key string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.db == nil {
+		return "", fmt.Errorf("database not initialized")
+	}
+	var val string
+	err := s.db.QueryRow(`SELECT value FROM key_value WHERE namespace = ? AND key = ?`, namespace, key).Scan(&val)
+	if err != nil {
+		return "", err
+	}
+	return val, nil
+}
+
+// SetVirtualKeyUsage records accumulated token usage for a virtual key.
+func (s *DBStore) SetVirtualKeyUsage(keyID string, tokens int) error {
+	return s.SetKeyValue("virtual_keys", keyID, fmt.Sprintf("%d", tokens))
+}
+
+// GetVirtualKeyUsage returns accumulated token usage for a virtual key.
+func (s *DBStore) GetVirtualKeyUsage(keyID string) (int, error) {
+	val, err := s.GetKeyValue("virtual_keys", keyID)
+	if err != nil {
+		return 0, err
+	}
+	var tokens int
+	fmt.Sscanf(val, "%d", &tokens)
+	return tokens, nil
+}
+
+// RecordWebhookDelivery stores a delivery attempt into webhook_deliveries table.
+func (s *DBStore) RecordWebhookDelivery(del *WebhookDelivery) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	query := `
+	INSERT INTO webhook_deliveries (webhook_id, event_type, status, http_status, latency_ms, error, payload_snapshot, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	crStr := time.Now().UTC().Format(time.RFC3339)
+	if !del.CreatedAt.IsZero() {
+		crStr = del.CreatedAt.Format(time.RFC3339)
+	}
+	res, err := s.db.Exec(query, del.WebhookID, del.EventType, del.Status, del.HTTPStatus, del.LatencyMs, del.Error, del.PayloadSnapshot, crStr)
+	if err != nil {
+		return err
+	}
+	if id, err := res.LastInsertId(); err == nil {
+		del.ID = id
+	}
+	return nil
+}
+
+// GetWebhookDeliveries queries historical deliveries for a webhook ID.
+func (s *DBStore) GetWebhookDeliveries(webhookID string, limit int) ([]WebhookDelivery, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `
+	SELECT id, webhook_id, event_type, status, http_status, latency_ms, error, payload_snapshot, created_at
+	FROM webhook_deliveries
+	WHERE webhook_id = ?
+	ORDER BY created_at DESC, id DESC
+	LIMIT ?
+	`
+	rows, err := s.db.Query(query, webhookID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deliveries []WebhookDelivery
+	for rows.Next() {
+		var d WebhookDelivery
+		var httpStatus *int
+		var latencyMs *int64
+		var errStr, payloadSnap *string
+		var crStr string
+		if err := rows.Scan(&d.ID, &d.WebhookID, &d.EventType, &d.Status, &httpStatus, &latencyMs, &errStr, &payloadSnap, &crStr); err != nil {
+			continue
+		}
+		d.HTTPStatus = httpStatus
+		d.LatencyMs = latencyMs
+		if errStr != nil {
+			d.Error = *errStr
+		}
+		if payloadSnap != nil {
+			d.PayloadSnapshot = *payloadSnap
+		}
+		d.CreatedAt, _ = time.Parse(time.RFC3339, crStr)
+		deliveries = append(deliveries, d)
+	}
+	return deliveries, nil
+}
+
+// Close closes the database connection, ensuring WAL is cleanly flushed and truncated.
 func (s *DBStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	globalDB.CompareAndSwap(s, nil)
 	if s.db != nil {
+		_, _ = s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
 		err := s.db.Close()
 		s.db = nil
 		return err

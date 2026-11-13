@@ -55,6 +55,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 
 		now := time.Now().Unix()
 		toolCallIndex := 0
+		seenCallIDs := make(map[string]int)
 		var lastGeminiFinishReason string
 
 		for scanner.Scan() {
@@ -101,6 +102,13 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 						StoreThoughtSignature(callID, sig)
 					}
 
+					curIdx, exists := seenCallIDs[callID]
+					if !exists {
+						curIdx = toolCallIndex
+						seenCallIDs[callID] = curIdx
+						toolCallIndex++
+					}
+
 					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
 					toolCallChunk := map[string]interface{}{
 						"id":      "chatcmpl-goroute",
@@ -113,7 +121,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 								"delta": map[string]interface{}{
 									"tool_calls": []map[string]interface{}{
 										{
-											"index": toolCallIndex,
+											"index": curIdx,
 											"id":    callID,
 											"type":  "function",
 											"function": map[string]string{
@@ -127,7 +135,6 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 							},
 						},
 					}
-					toolCallIndex++
 					data, _ := json.Marshal(toolCallChunk)
 					fmt.Fprintf(pw, "data: %s\n\n", data)
 					continue

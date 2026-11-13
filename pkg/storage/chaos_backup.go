@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -33,18 +34,38 @@ var (
 	}
 )
 
-// GetChaosConfig returns current chaos test configuration.
+// GetChaosConfig returns current chaos test configuration, loading from SQLite key_value table if present.
 func GetChaosConfig() ChaosConfig {
 	chaosMu.RLock()
 	defer chaosMu.RUnlock()
+
+	db := GetDB()
+	if db != nil {
+		if val, err := db.GetKeyValue("settings", "chaosConfig"); err == nil && val != "" {
+			var cfg ChaosConfig
+			if err := json.Unmarshal([]byte(val), &cfg); err == nil {
+				return cfg
+			}
+		}
+	}
 	return globalChaos
 }
 
-// SetChaosConfig updates chaos configuration.
-func SetChaosConfig(cfg ChaosConfig) {
+// SetChaosConfig updates chaos configuration in-memory and persists it into SQLite key_value table.
+func SetChaosConfig(cfg ChaosConfig) error {
 	chaosMu.Lock()
 	defer chaosMu.Unlock()
 	globalChaos = cfg
+
+	db := GetDB()
+	if db != nil {
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			return err
+		}
+		return db.SetKeyValue("settings", "chaosConfig", string(data))
+	}
+	return nil
 }
 
 // FreeModelBudget describes a provider model offering a free quota tier.

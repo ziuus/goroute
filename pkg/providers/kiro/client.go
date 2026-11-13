@@ -630,7 +630,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// Read buffer for eventstream
 		buf := make([]byte, 0, 64*1024)
 		readBuf := make([]byte, 4096)
-		toolCallIdx := 0
+		toolCallIdx := -1
+		seenToolIDs := make(map[string]int)
 
 		for {
 			n, rErr := resp.Body.Read(readBuf)
@@ -725,6 +726,22 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 								Input     interface{} `json:"input"`
 							}
 							if err := json.Unmarshal(payloadBytes, &evt); err == nil && (evt.Name != "" || evt.ToolUseId != "") {
+								currentIdx := 0
+								if evt.ToolUseId != "" {
+									idx, exists := seenToolIDs[evt.ToolUseId]
+									if !exists {
+										toolCallIdx++
+										idx = toolCallIdx
+										seenToolIDs[evt.ToolUseId] = idx
+									}
+									currentIdx = idx
+								} else {
+									if toolCallIdx < 0 {
+										toolCallIdx = 0
+									}
+									currentIdx = toolCallIdx
+								}
+
 								argsStr := ""
 								switch v := evt.Input.(type) {
 								case string:
@@ -751,7 +768,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 											"delta": map[string]interface{}{
 												"tool_calls": []map[string]interface{}{
 													{
-														"index": toolCallIdx,
+														"index": currentIdx,
 														"id":    evt.ToolUseId,
 														"type":  "function",
 														"function": map[string]string{
@@ -765,7 +782,6 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 										},
 									},
 								}
-								toolCallIdx++
 								chunkBytes, _ := json.Marshal(chunk)
 								fmt.Fprintf(pw, "data: %s\n\n", string(chunkBytes))
 							}

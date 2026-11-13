@@ -22,6 +22,19 @@ type WebhookSubscription struct {
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
+// WebhookDelivery records historical dispatch attempts and outcomes for a webhook.
+type WebhookDelivery struct {
+	ID              int64      `json:"id"`
+	WebhookID       string     `json:"webhookId"`
+	EventType       string     `json:"eventType"`
+	Status          string     `json:"status"` // "success" | "failed"
+	HTTPStatus      *int       `json:"httpStatus,omitempty"`
+	LatencyMs       *int64     `json:"latencyMs,omitempty"`
+	Error           string     `json:"error,omitempty"`
+	PayloadSnapshot string     `json:"payloadSnapshot,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt"`
+}
+
 // WebhookStore manages webhooks table in SQLite.
 type WebhookStore struct {
 	db *DBStore
@@ -175,5 +188,48 @@ func (s *WebhookStore) DeleteWebhook(id string) error {
 	}
 
 	_, err := s.db.db.Exec(`DELETE FROM webhooks WHERE id = ?`, id)
+	return err
+}
+
+// RecordDelivery persists a webhook delivery attempt outcome.
+func (s *WebhookStore) RecordDelivery(del *WebhookDelivery) error {
+	if s.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	return s.db.RecordWebhookDelivery(del)
+}
+
+// GetDeliveries returns historical deliveries for a webhook.
+func (s *WebhookStore) GetDeliveries(webhookID string, limit int) ([]WebhookDelivery, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	return s.db.GetWebhookDeliveries(webhookID, limit)
+}
+
+// UpdateWebhookTriggerStatus updates last_triggered_at, last_status, and failure_count.
+func (s *WebhookStore) UpdateWebhookTriggerStatus(id string, lastStatus int, failure bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.db == nil || s.db.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if failure {
+		_, err := s.db.db.Exec(`
+			UPDATE webhooks
+			SET last_triggered_at = ?, last_status = ?, failure_count = failure_count + 1
+			WHERE id = ?
+		`, now, lastStatus, id)
+		return err
+	}
+
+	_, err := s.db.db.Exec(`
+		UPDATE webhooks
+		SET last_triggered_at = ?, last_status = ?, failure_count = 0
+		WHERE id = ?
+	`, now, lastStatus, id)
 	return err
 }

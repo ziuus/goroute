@@ -615,10 +615,12 @@ func (r *Router) executeComboRecursive(ctx context.Context, combo *Combo, req *p
 		r.mu.RLock()
 		if target.ProviderID == "combo" || target.ProviderID == "" {
 			subCombo = r.combos[target.Model]
-		} else if sc, ok := r.combos[target.Model]; ok {
-			subCombo = sc
-		} else if sc, ok := r.combos[target.ProviderID]; ok {
-			subCombo = sc
+		} else if _, isProv := r.providers[target.ProviderID]; !isProv {
+			if sc, ok := r.combos[target.Model]; ok {
+				subCombo = sc
+			} else if sc, ok := r.combos[target.ProviderID]; ok {
+				subCombo = sc
+			}
 		}
 		r.mu.RUnlock()
 
