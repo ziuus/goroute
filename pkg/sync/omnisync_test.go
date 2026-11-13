@@ -24,7 +24,7 @@ func TestSyncLive(t *testing.T) {
 	if _, err := os.Stat(omniDB); os.IsNotExist(err) {
 		t.Skip("skipping TestSyncLive: omniroute database not present on this machine")
 	}
-	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	res, err := SyncFromOmniRoute(cfgPath)
 	if err != nil {
 		t.Fatalf("SyncFromOmniRoute failed: %v", err)
@@ -32,5 +32,8 @@ func TestSyncLive(t *testing.T) {
 	t.Logf("Sync result: providers=%d, accounts=%d, combos=%d", res.ProvidersImported, res.AccountsImported, res.CombosImported)
 	for _, d := range res.Details {
 		t.Logf("  detail: %s", d)
+	}
+	if fi, err := os.Stat(cfgPath); err != nil || fi.Size() == 0 {
+		t.Fatalf("expected written config in temp dir, got err=%v", err)
 	}
 }

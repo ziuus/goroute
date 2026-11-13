@@ -571,8 +571,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		if acc.APIKey != "" {
 			httpReq.Header.Set("tokentype", "API_KEY")
 		}
-		httpReq.Header.Set("User-Agent", "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0")
-		httpReq.Header.Set("X-Amz-User-Agent", "aws-sdk-js/3.0.0 kiro-ide/1.0.0")
+		httpReq.Header.Set("User-Agent", "kiro/2.20.2")
+		httpReq.Header.Set("X-Amz-User-Agent", "aws-sdk-js/3.0.0")
 
 		resp, err := p.client.Do(httpReq)
 		if err != nil {

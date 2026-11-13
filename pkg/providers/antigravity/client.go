@@ -603,11 +603,13 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		case "gemini-3.1-pro-high", "gemini-3-pro-high":
 			upstreamModel = "gemini-3.1-pro-high"
 		case "gemini-3.1-pro", "gemini-3-pro", "gemini-2.5-pro", "gemini-pro", "gemini-pro-agent":
-			upstreamModel = "gemini-3.1-pro"
+			upstreamModel = "gemini-2.5-pro"
 		case "gemini-3.8-flash-high":
 			upstreamModel = "gemini-3.8-flash-high"
-		case "gemini-2.5-flash", "gemini-flash", "gemini-flash-3-8", "gemini-3.8-flash", "gemini-3-flash":
-			upstreamModel = "gemini-3.8-flash"
+		case "gemini-2.5-flash", "gemini-flash", "gemini-flash-3-8", "gemini-3.8-flash":
+			upstreamModel = "gemini-2.5-flash"
+		case "gemini-3-flash":
+			upstreamModel = "gemini-3-flash"
 		case "gemini-2.5-flash-lite", "gemini-flash-lite", "gemini-3.1-flash-lite":
 			upstreamModel = "gemini-3.1-flash-lite"
 		case "gpt-oss", "gpt-oss-120b", "gpt-oss-120b-medium":
